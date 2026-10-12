@@ -214,6 +214,38 @@
     } catch (error) { $('passwordResetStatus').textContent = error.message; }
   }, true);
 
+  $('openAdminRecovery').onclick = () => {
+    $('loginOverlay').style.display = 'none';
+    $('adminRecoveryOverlay').style.display = 'flex';
+    $('adminRecoveryStatus').textContent = '';
+  };
+  $('cancelAdminRecovery').onclick = () => {
+    $('adminRecoveryOverlay').style.display = 'none';
+    $('loginOverlay').style.display = 'flex';
+  };
+  document.getElementById('adminRecoveryForm').addEventListener('submit', async event => {
+    stopEvent(event);
+    const token = $('adminRecoveryToken').value.trim();
+    const password = $('adminRecoveryPassword').value;
+    if (password.length < 12 || password !== $('adminRecoveryConfirm').value) {
+      $('adminRecoveryStatus').textContent = 'Password baru tidak cocok atau kurang dari 12 karakter.';
+      return;
+    }
+    const button = event.target.querySelector('button[type="submit"]');
+    setBusy(button, true, 'Memulihkan...');
+    try {
+      await callFunction('admin-recover-password', { token, password }, true);
+      event.target.reset();
+      $('adminRecoveryOverlay').style.display = 'none';
+      $('loginOverlay').style.display = 'flex';
+      $('loginRole').value = 'admin';
+      $('loginUsername').value = 'admin';
+      $('loginError').textContent = 'Password admin berhasil diubah. Masuk dengan password baru.';
+    } catch (error) {
+      $('adminRecoveryStatus').textContent = error.message;
+    } finally { setBusy(button, false); }
+  }, true);
+
   document.getElementById('recoveryPasswordForm').addEventListener('submit', async event => {
     stopEvent(event);
     const password = $('recoveryNewPassword').value;

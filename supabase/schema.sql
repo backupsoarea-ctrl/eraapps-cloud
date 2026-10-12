@@ -57,6 +57,15 @@ create table if not exists public.password_reset_requests (
   resolved_by uuid references public.profiles(id)
 );
 
+create table if not exists public.admin_recovery_uses (
+  token_hash text primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  used_at timestamptz not null default now()
+);
+alter table public.admin_recovery_uses enable row level security;
+revoke all on public.admin_recovery_uses from anon, authenticated;
+grant all on public.admin_recovery_uses to service_role;
+
 create table if not exists public.promo_folders (
   id uuid primary key default gen_random_uuid(),
   path text unique not null,

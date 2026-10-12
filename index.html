@@ -198,6 +198,18 @@ td small{color:var(--muted)}
   <label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password" required placeholder="Password">
   <button type="submit">Masuk</button><div id="loginError" class="login-error"></div>
   <button type="button" class="secondary small-btn" id="openPasswordReset">Lupa Password?</button>
+  <button type="button" class="secondary small-btn" id="openAdminRecovery">Pemulihan Admin tanpa Email</button>
+ </form>
+</div>
+
+<div id="adminRecoveryOverlay" class="login-overlay" style="display:none">
+ <form id="adminRecoveryForm" class="login-card">
+  <h2>Pemulihan Admin</h2><p class="mini">Gunakan kode darurat sekali pakai yang dibuat pemilik proyek Supabase.</p>
+  <label for="adminRecoveryToken">Kode pemulihan</label><input id="adminRecoveryToken" type="password" autocomplete="off" required>
+  <label for="adminRecoveryPassword">Password baru (minimal 12 karakter)</label><input id="adminRecoveryPassword" type="password" minlength="12" autocomplete="new-password" required>
+  <label for="adminRecoveryConfirm">Ulangi password baru</label><input id="adminRecoveryConfirm" type="password" minlength="12" autocomplete="new-password" required>
+  <button type="submit">Atur Password Admin</button><button type="button" class="secondary" id="cancelAdminRecovery">Kembali</button>
+  <div id="adminRecoveryStatus" class="login-error" role="status"></div>
  </form>
 </div>
 

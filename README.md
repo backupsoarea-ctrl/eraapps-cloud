@@ -4,7 +4,7 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 
 ## Menyiapkan Supabase
 
-1. Buat proyek Supabase dan jalankan `supabase/schema.sql` satu kali melalui SQL Editor.
+1. Buat proyek Supabase dan jalankan versi terbaru `supabase/schema.sql` melalui SQL Editor. Schema aman dijalankan ulang jika tabel atau policy sudah dibuat sebagian.
 2. Buat user admin di Authentication > Users. Gunakan email berbentuk `username@eraapps.invalid`, tandai email terkonfirmasi, dan tetapkan password admin.
 3. Salin UUID user itu dan daftarkan profil admin di SQL Editor:
 
@@ -15,7 +15,7 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 
 	Username yang dipakai di form login harus sama dengan `username` di profil. User awal ini menjadi admin; akun karyawan dibuat dari menu Setting Admin.
 4. Di Supabase **Authentication > URL Configuration**, set **Site URL** ke `https://backupsoarea-ctrl.github.io/eraapps-cloud/` dan tambahkan URL itu ke **Redirect URLs** (misalnya `https://backupsoarea-ctrl.github.io/eraapps-cloud/**`). Ini memastikan tautan recovery kembali ke situs, bukan `localhost`.
-5. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy empat Edge Functions:
+5. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy Edge Functions:
 
 	```sh
 	supabase login
@@ -24,9 +24,20 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 	supabase functions deploy admin-delete-user
 	supabase functions deploy password-reset-request
 	supabase functions deploy resolve-password-reset
+	supabase functions deploy admin-recover-password
 	```
 
 	Jangan pernah memasukkan service-role key ke HTML, file konfigurasi browser, atau GitHub Pages.
+
+6. Siapkan kode pemulihan darurat admin tanpa email. Kode ini acak, hanya berlaku sekali, dan jangan commit atau kirimkan ke siapa pun:
+
+	```sh
+	umask 077
+	openssl rand -hex 32 > ~/eraapps-admin-recovery-code.txt
+	supabase secrets set ADMIN_RECOVERY_TOKEN="$(cat ~/eraapps-admin-recovery-code.txt)" ADMIN_RECOVERY_USER_ID="08185117-6f28-4305-96cc-6af44855947a" --project-ref PROJECT_REF
+	```
+
+	Ganti UUID dengan UUID user admin yang benar jika berbeda. Saat terkunci, pilih **Pemulihan Admin tanpa Email**, masukkan isi file kode dan password baru minimal 12 karakter. Setelah berhasil, kode langsung tidak berlaku. Untuk recovery berikutnya, buat kode acak baru dan jalankan `supabase secrets set ADMIN_RECOVERY_TOKEN="$(cat ~/eraapps-admin-recovery-code.txt)" --project-ref PROJECT_REF` lagi.
 
 ## Deploy ke GitHub Pages
 

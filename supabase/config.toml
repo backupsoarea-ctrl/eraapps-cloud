@@ -1,2 +1,5 @@
 [functions.password-reset-request]
 verify_jwt = false
+
+[functions.admin-recover-password]
+verify_jwt = false
