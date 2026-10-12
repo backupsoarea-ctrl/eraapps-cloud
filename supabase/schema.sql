@@ -14,6 +14,8 @@ create table if not exists public.profiles (
   must_change_password boolean not null default false,
   created_at timestamptz not null default now()
 );
+alter table public.profiles
+  add column if not exists must_change_password boolean not null default false;
 
 create table if not exists public.staff (
   code text primary key,
@@ -126,6 +128,24 @@ alter table public.promo_folders enable row level security;
 alter table public.promos enable row level security;
 alter table public.app_settings enable row level security;
 
+drop policy if exists "profiles read self or admin" on public.profiles;
+drop policy if exists "profiles admin manage" on public.profiles;
+drop policy if exists "staff read authorized" on public.staff;
+drop policy if exists "staff admin manage" on public.staff;
+drop policy if exists "staff access read self or admin" on public.staff_access;
+drop policy if exists "staff access admin manage" on public.staff_access;
+drop policy if exists "attendance read authorized" on public.attendance_logs;
+drop policy if exists "attendance insert own staff" on public.attendance_logs;
+drop policy if exists "attendance admin manage" on public.attendance_logs;
+drop policy if exists "reset requests admin read" on public.password_reset_requests;
+drop policy if exists "reset requests admin resolve" on public.password_reset_requests;
+drop policy if exists "promo folders authenticated read" on public.promo_folders;
+drop policy if exists "promo folders admin manage" on public.promo_folders;
+drop policy if exists "promos authenticated read" on public.promos;
+drop policy if exists "promos admin manage" on public.promos;
+drop policy if exists "settings authenticated read" on public.app_settings;
+drop policy if exists "settings admin manage" on public.app_settings;
+
 create policy "profiles read self or admin" on public.profiles for select to authenticated
   using (id = auth.uid() or public.current_user_is_admin());
 create policy "profiles admin manage" on public.profiles for all to authenticated
@@ -169,6 +189,12 @@ create policy "settings admin manage" on public.app_settings for all to authenti
 insert into storage.buckets (id, name, public)
 values ('attendance-proofs', 'attendance-proofs', false), ('app-media', 'app-media', false)
 on conflict (id) do update set public = excluded.public;
+
+drop policy if exists "attendance proof read authorized" on storage.objects;
+drop policy if exists "attendance proof insert authorized" on storage.objects;
+drop policy if exists "attendance proof admin delete" on storage.objects;
+drop policy if exists "app media authenticated read" on storage.objects;
+drop policy if exists "app media admin manage" on storage.objects;
 
 create policy "attendance proof read authorized" on storage.objects for select to authenticated
   using (bucket_id = 'attendance-proofs' and public.current_user_can_access_staff((storage.foldername(name))[1]));

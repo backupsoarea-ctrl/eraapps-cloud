@@ -14,7 +14,8 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 	```
 
 	Username yang dipakai di form login harus sama dengan `username` di profil. User awal ini menjadi admin; akun karyawan dibuat dari menu Setting Admin.
-4. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy empat Edge Functions:
+4. Di Supabase **Authentication > URL Configuration**, set **Site URL** ke `https://backupsoarea-ctrl.github.io/eraapps-cloud/` dan tambahkan URL itu ke **Redirect URLs** (misalnya `https://backupsoarea-ctrl.github.io/eraapps-cloud/**`). Ini memastikan tautan recovery kembali ke situs, bukan `localhost`.
+5. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy empat Edge Functions:
 
 	```sh
 	supabase login

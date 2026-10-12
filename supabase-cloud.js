@@ -4,6 +4,7 @@
   let refreshTimer;
   let realtimeChannel;
   let mediaSequence = 0;
+  let recoveryFlow = false;
   const aliasEmail = username => `${String(username).trim().toLowerCase()}@eraapps.invalid`;
   const fail = (error, fallback = 'Operasi online gagal.') => { throw new Error(error?.message || fallback); };
   const check = result => { if (result.error) fail(result.error); return result.data; };
@@ -189,8 +190,9 @@
     const button = $('loginForm').querySelector('button[type="submit"]');
     setBusy(button, true, 'Memeriksa...');
     try {
-      const username = $('loginUsername').value.trim().toLowerCase();
-      const { data, error } = await client.auth.signInWithPassword({ email: aliasEmail(username), password: $('loginPassword').value });
+      const loginIdentifier = $('loginUsername').value.trim().toLowerCase();
+      const email = loginIdentifier.includes('@') ? loginIdentifier : aliasEmail(loginIdentifier);
+      const { data, error } = await client.auth.signInWithPassword({ email, password: $('loginPassword').value });
       if (error) fail(error, 'Username atau password tidak sesuai.');
       const profile = await profileFor(data.user.id);
       if (profile.role !== $('loginRole').value) { await client.auth.signOut(); throw new Error('Jenis akun tidak sesuai.'); }
@@ -210,6 +212,29 @@
       await callFunction('password-reset-request', { code: $('resetBarcode').value.trim().toUpperCase(), name: $('resetEmployeeName').value.trim() }, true);
       event.target.reset(); $('passwordResetStatus').className = 'login-success'; $('passwordResetStatus').textContent = 'Permintaan terkirim dan menunggu persetujuan admin.';
     } catch (error) { $('passwordResetStatus').textContent = error.message; }
+  }, true);
+
+  document.getElementById('recoveryPasswordForm').addEventListener('submit', async event => {
+    stopEvent(event);
+    const password = $('recoveryNewPassword').value;
+    if (password.length < 6 || password !== $('recoveryConfirmPassword').value) {
+      $('recoveryPasswordError').textContent = 'Password baru tidak cocok atau kurang dari 6 karakter.';
+      return;
+    }
+    const button = event.target.querySelector('button[type="submit"]');
+    setBusy(button, true, 'Menyimpan...');
+    try {
+      const { error } = await client.auth.updateUser({ password });
+      if (error) fail(error);
+      await client.auth.signOut();
+      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+      event.target.reset();
+      $('recoveryPasswordOverlay').style.display = 'none';
+      $('loginOverlay').style.display = 'flex';
+      $('loginError').textContent = 'Password berhasil diperbarui. Silakan masuk dengan password baru.';
+    } catch (error) {
+      $('recoveryPasswordError').textContent = error.message || 'Password gagal diperbarui.';
+    } finally { setBusy(button, false); }
   }, true);
 
   document.getElementById('forcePasswordForm').addEventListener('submit', async event => {
@@ -423,7 +448,21 @@
     }
     try {
       client = window.supabase.createClient(config.url, config.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+      client.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY' && session) {
+          recoveryFlow = true;
+          currentUser = { role: null, profile: null, account: null };
+          $('loginOverlay').style.display = 'none';
+          $('recoveryPasswordOverlay').style.display = 'flex';
+        }
+      });
+      const authError = new URLSearchParams(window.location.hash.slice(1));
+      if (authError.get('error_code') === 'otp_expired') {
+        $('loginError').textContent = 'Tautan reset password sudah kedaluwarsa atau pernah digunakan. Minta tautan baru.';
+        window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
+      }
       const { data } = await client.auth.getSession();
+      if (recoveryFlow) return;
       if (data.session) {
         const profile = await profileFor(data.session.user.id);
         currentUser = { role: profile.role, profile, account: null };
