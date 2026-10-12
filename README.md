@@ -51,3 +51,5 @@ Untuk menjalankan secara lokal, sajikan folder lewat web server lokal. `supabase
 ## Data yang sudah tersimpan lokal
 
 Data lama di `localStorage` perangkat tidak dipindahkan otomatis. Sebelum beralih, ekspor backup dari aplikasi lama dan siapkan migrasi data secara terkontrol. Jangan mengimpor sandi user lama sebagai teks biasa; buat ulang akun melalui admin supaya Supabase Auth menyimpan kredensialnya dengan aman.
+
+Folder dan promo lama yang hanya tersimpan di browser juga tidak muncul otomatis di cloud. Buat ulang melalui **Setting Admin > Promo / Informasi**, atau unggah folder lama dengan **Pilih Folder dari PC**. Untuk slideshow user, publikasikan gambar ke folder `Highlight`.

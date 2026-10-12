@@ -73,6 +73,9 @@ create table if not exists public.promo_folders (
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
+insert into public.promo_folders (path, parent_path)
+values ('Umum', null), ('Highlight', null)
+on conflict (path) do nothing;
 
 create table if not exists public.promos (
   id uuid primary key default gen_random_uuid(),

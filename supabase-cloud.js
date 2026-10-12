@@ -8,6 +8,8 @@
   const aliasEmail = username => `${String(username).trim().toLowerCase()}@eraapps.invalid`;
   const fail = (error, fallback = 'Operasi online gagal.') => { throw new Error(error?.message || fallback); };
   const check = result => { if (result.error) fail(result.error); return result.data; };
+  const isImageFile = (contentType, fileName) => String(contentType || '').toLowerCase().startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(String(fileName || ''));
+  const isHighlightPath = path => { const value = String(path || '').toLowerCase(); return value === 'highlight' || value.startsWith('highlight/'); };
   const setBusy = (button, busy, label) => { if (!button) return; button.disabled = busy; if (busy) { button.dataset.originalLabel = button.textContent; button.textContent = label || 'Menyimpan...'; } else if (button.dataset.originalLabel) { button.textContent = button.dataset.originalLabel; delete button.dataset.originalLabel; } };
   const showError = error => { const message = error?.message || 'Terjadi kesalahan saat menghubungi server.'; if ($('loginOverlay').style.display !== 'none') $('loginError').textContent = message; else notify(message, 'err'); };
   const fileFromDataUrl = async data => (await fetch(data)).blob();
@@ -70,13 +72,16 @@
       return { id: row.id, ts: new Date(row.occurred_at).getTime(), date: row.local_date, time: row.local_time, code: row.staff_code, name: person?.name || row.staff_code, action: row.action, detail: row.detail, photo, photoPath: row.photo_path };
     }));
     promoFolders = check(folderResult).map(row => row.path);
-    promos = await Promise.all(check(promoResult).map(async row => ({
-      id: row.id, title: row.title, text: row.body, folder: row.folder_path,
-      image: row.file_path && (row.content_type || '').startsWith('image/') ? await signedFileUrl('app-media', row.file_path) : '',
-      fileData: row.file_path && !(row.content_type || '').startsWith('image/') ? await signedFileUrl('app-media', row.file_path) : '',
-      filePath: row.file_path, fileName: row.file_name, imageType: row.content_type,
-      created: new Date(row.created_at).toLocaleString('id-ID'), isHighlight: row.is_highlight,
-    })));
+    promos = await Promise.all(check(promoResult).map(async row => {
+      const imageFile = isImageFile(row.content_type, row.file_name);
+      return {
+        id: row.id, title: row.title, text: row.body, folder: row.folder_path,
+        image: row.file_path && imageFile ? await signedFileUrl('app-media', row.file_path) : '',
+        fileData: row.file_path && !imageFile ? await signedFileUrl('app-media', row.file_path) : '',
+        filePath: row.file_path, fileName: row.file_name, imageType: row.content_type,
+        created: new Date(row.created_at).toLocaleString('id-ID'), isHighlight: row.is_highlight || isHighlightPath(row.folder_path),
+      };
+    }));
     const storedSettings = check(settingsResult)?.value || {};
     appSettings = {
       ...storedSettings,

@@ -595,26 +595,24 @@ $('promoForm').onsubmit=async e=>{
 };
 function safeDownloadName(name){return String(name||'file').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'_').replace(/^\.+/,'')||'file'}
 function triggerDownload(name,blob){const link=document.createElement('a'),url=URL.createObjectURL(blob);link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1500)}
+async function imageBlobToJpeg(sourceBlob){const imageUrl=URL.createObjectURL(sourceBlob);try{const image=new Image();image.src=imageUrl;await image.decode();const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0);return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('JPEG encoding failed')),'image/jpeg',0.95))}finally{URL.revokeObjectURL(imageUrl)}}
 async function downloadPromoJpeg(id){
  const promo=promos.find(item=>String(item.id)===String(id));if(!promo?.image)return;
  try{
   const source=await fetch(promo.image),sourceBlob=await source.blob();
   const baseName=safeDownloadName((promo.fileName||promo.title||'promo').replace(/\.[^.]+$/,''));
   if(sourceBlob.type==='image/jpeg'){triggerDownload(`${baseName}.jpg`,sourceBlob);return}
-  const image=new Image();image.src=promo.image;await image.decode();
-  const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
-  const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(image,0,0);
-  const jpeg=await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('JPEG encoding failed')),'image/jpeg',0.95));
+  const jpeg=await imageBlobToJpeg(sourceBlob);
   triggerDownload(`${baseName}.jpg`,jpeg);
  }catch(err){alert('Gambar gagal dikonversi menjadi JPEG.')}
 }
-async function downloadPromoFolder(folder){
+async function downloadPromoFolder(folder,jpegImages=false){
  const items=promos.filter(item=>item.folder===folder||item.folder.startsWith(folder+'/'));if(!items.length){alert('Folder ini belum memiliki file.');return}
  if(typeof JSZip==='undefined'){alert('Fitur ZIP membutuhkan koneksi internet untuk memuat pustaka ZIP.');return}
  try{
   const zip=new JSZip(),usedNames=new Set();
   for(const item of items){
-  if(item.image||item.fileData){const response=await fetch(item.image||item.fileData),blob=await response.blob(),mimeExtension=blob.type==='image/png'?'.png':blob.type==='image/gif'?'.gif':blob.type==='image/webp'?'.webp':'.jpg',filePath=item.folder===folder?(item.relativePath||item.fileName||`${item.title||'promo'}${mimeExtension}`):`${item.folder.slice(folder.length+1)}/${item.relativePath||item.fileName||'file'}`;let filename=filePath.split('/').map(safeDownloadName).join('/'),base=filename.replace(/\.[^.]+$/,''),extension=filename.includes('.')?filename.slice(filename.lastIndexOf('.')+1):mimeExtension.slice(1),number=2;while(usedNames.has(filename.toLowerCase()))filename=`${base} (${number++}).${extension}`;usedNames.add(filename.toLowerCase());zip.file(filename,blob)}
+  if(item.image||item.fileData){const response=await fetch(item.image||item.fileData),sourceBlob=await response.blob(),isImage=String(item.imageType||sourceBlob.type).startsWith('image/')||/\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(item.fileName||''),blob=jpegImages&&isImage?await imageBlobToJpeg(sourceBlob):sourceBlob,mimeExtension=jpegImages&&isImage?'.jpg':sourceBlob.type==='image/png'?'.png':sourceBlob.type==='image/gif'?'.gif':sourceBlob.type==='image/webp'?'.webp':'.jpg',sourceName=item.relativePath||item.fileName||`${item.title||'promo'}${mimeExtension}`,filePath=item.folder===folder?sourceName:`${item.folder.slice(folder.length+1)}/${sourceName}`,normalizedPath=jpegImages&&isImage?filePath.replace(/\.[^/.]+$/,'')+'.jpg':filePath;let filename=normalizedPath.split('/').map(safeDownloadName).join('/'),base=filename.replace(/\.[^.]+$/,''),extension=filename.includes('.')?filename.slice(filename.lastIndexOf('.')+1):mimeExtension.slice(1),number=2;while(usedNames.has(filename.toLowerCase()))filename=`${base} (${number++}).${extension}`;usedNames.add(filename.toLowerCase());zip.file(filename,blob)}
   else{let filename=safeDownloadName(`${item.title||'Informasi'}.txt`),base=filename.replace(/\.[^.]+$/,''),number=2;while(usedNames.has(filename.toLowerCase()))filename=`${base} (${number++}).txt`;usedNames.add(filename.toLowerCase());const content=`${item.title||'Informasi'}\n${item.created||''}\n\n${item.text||''}`;zip.file(filename,content)}
   }
   const blob=await zip.generateAsync({type:'blob'});triggerDownload(`${safeDownloadName(folder)}.zip`,blob);
@@ -625,8 +623,10 @@ function promoCard(p,admin=false){const title=promoDisplayTitle(p);return `<arti
 async function downloadPromoFile(id){const item=promos.find(promo=>String(promo.id)===String(id));if(!item)return;try{const response=await fetch(item.fileData||item.image);triggerDownload(safeDownloadName(item.fileName||'file'),await response.blob())}catch(error){alert('File gagal diunduh.')}}
 function isHighlightFolder(folder){const path=String(folder||'').toLowerCase();return path==='highlight'||path.startsWith('highlight/')}
 function showHighlightSlide(index){
- const items=promos.filter(item=>isHighlightFolder(item.folder)&&item.image),panel=$('highlightSlideshow');
- panel.hidden=!items.length;if(!items.length)return;
+ const items=promos.filter(item=>(item.isHighlight||isHighlightFolder(item.folder))&&item.image),panel=$('highlightSlideshow');
+ panel.hidden=false;
+ if(!items.length){$('highlightImage').hidden=true;$('highlightTitle').hidden=false;$('highlightTitle').textContent='Belum ada promo highlight';$('highlightText').textContent='';$('highlightCounter').textContent='';['highlightPrevious','highlightNext','highlightDownload'].forEach(id=>$(id).hidden=true);return}
+ $('highlightImage').hidden=false;['highlightPrevious','highlightNext','highlightDownload'].forEach(id=>$(id).hidden=false);
  highlightIndex=(index+items.length)%items.length;const item=items[highlightIndex];
  const title=promoDisplayTitle(item);$('highlightImage').src=item.image;$('highlightTitle').textContent=title;$('highlightTitle').hidden=!title;$('highlightText').textContent=item.text||'';$('highlightCounter').textContent=`${highlightIndex+1} / ${items.length}`;$('highlightDownload').onclick=()=>downloadPromoJpeg(item.id);
 }
@@ -656,15 +656,16 @@ function renderAdminPromoFolders(){
 }
 function renderPromos(){
  const target=$('promoList');renderAdminPromoFolders();
- const highlightItems=promos.filter(item=>isHighlightFolder(item.folder)&&item.image);
+ const highlightItems=promos.filter(item=>(item.isHighlight||isHighlightFolder(item.folder))&&item.image);
  if(highlightTimer)clearInterval(highlightTimer);showHighlightSlide(highlightIndex);
  if(highlightItems.length>1&&currentUser?.role==='user')highlightTimer=setInterval(()=>showHighlightSlide(highlightIndex+1),5000);
  $('highlightPrevious').onclick=()=>showHighlightSlide(highlightIndex-1);$('highlightNext').onclick=()=>showHighlightSlide(highlightIndex+1);
- const regularFolders=promoFolders.filter(folder=>folder.toLowerCase()!=='highlight');
+ const regularFolders=promoFolders.filter(folder=>!isHighlightFolder(folder));
  const groups=regularFolders.map(folder=>({folder,items:promos.filter(item=>item.folder===folder)})).filter(group=>group.items.length);
- target.innerHTML=groups.length?groups.map(group=>`<section><h3>${esc(group.folder)}</h3><div class="promo-file-grid">${group.items.map(promoCard).join('')}</div></section>`).join(''):(promos.length?'<div class="empty">Promo Highlight tampil pada slideshow di atas.</div>':'<div class="empty">Belum ada promo atau informasi.</div>');
+ target.innerHTML=groups.length?groups.map(group=>`<section><div class="promo-folder-head"><h3>${esc(group.folder)}</h3><div class="promo-folder-tools"><button type="button" class="secondary small-btn" data-download-user-folder="${esc(group.folder)}">Download Folder JPEG</button></div></div><div class="promo-file-grid">${group.items.map(promoCard).join('')}</div></section>`).join(''):(promos.length?'<div class="empty">Promo Highlight tampil pada slideshow di atas.</div>':'<div class="empty">Belum ada promo atau informasi.</div>');
  target.querySelectorAll('[data-download-jpeg]').forEach(button=>button.onclick=()=>downloadPromoJpeg(button.dataset.downloadJpeg));
  target.querySelectorAll('[data-download-file]').forEach(button=>button.onclick=()=>downloadPromoFile(button.dataset.downloadFile));
+ target.querySelectorAll('[data-download-user-folder]').forEach(button=>button.onclick=()=>downloadPromoFolder(button.dataset.downloadUserFolder,true));
 }
 const originalRender=render;
 function renderCurrentUserCharts(){if(currentUser?.role!=='user')return;const code=currentUser.account?.activeCode||currentUser.account?.code,month=$('userMonth').value;renderUserCharts(logs.filter(item=>item.code===code&&item.date.slice(0,7)===month))}
