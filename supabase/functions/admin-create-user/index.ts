@@ -20,44 +20,86 @@ Deno.serve(async (request) => {
   if (profile?.role !== 'admin') return jsonResponse({ error: 'Hanya admin yang dapat membuat akun.' }, 403);
 
   let createdUserId: string | undefined;
+  let insertedStaffCodes: string[] = [];
   try {
     const body = await request.json();
     const username = String(body.username || '').trim().toLowerCase();
     const password = String(body.password || '');
+    const userType = String(body.userType || 'ERO');
+    const fullName = String(body.fullName || '');
     const employees = Array.isArray(body.employees) ? body.employees : [];
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || !employees.length) {
-      return jsonResponse({ error: 'Username, password minimal 6 karakter, dan karyawan wajib diisi.' }, 400);
+    const allowedUserTypes = ['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'];
+    const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || (needsEmployeeCodes && !employees.length) || !allowedUserTypes.includes(userType)) {
+      return jsonResponse({ error: 'Username, password, role pengguna, atau data karyawan tidak valid.' }, 400);
     }
     const employeeCodes = employees.map((employee: { code?: string }) => String(employee.code || '').trim().toUpperCase());
     if (new Set(employeeCodes).size !== employeeCodes.length || employees.some((employee: { code?: string; name?: string }) => !/^[A-Z0-9_-]{1,32}$/.test(String(employee.code || '').trim().toUpperCase()) || !String(employee.name || '').trim())) {
       return jsonResponse({ error: 'Kode karyawan duplikat atau data karyawan tidak lengkap.' }, 400);
     }
+    if (employeeCodes.length) {
+      const { data: existingStaff, error: existingStaffError } = await admin.from('staff').select('code').in('code', employeeCodes);
+      if (existingStaffError) throw existingStaffError;
+      if (existingStaff?.length) return jsonResponse({ error: `Kode karyawan sudah digunakan: ${existingStaff.map((item) => item.code).join(', ')}.` }, 409);
+    }
     const { count, error: countError } = await admin.from('staff').select('code', { count: 'exact', head: true });
     if (countError) throw countError;
     if ((count || 0) + employees.length > 30) return jsonResponse({ error: 'Maksimal 30 karyawan.' }, 400);
     const email = `${username}@eraapps.invalid`;
-    const { data: created, error: createError } = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    const profileMetadata = {
+      username, full_name: fullName || employees.map((employee: { name: string }) => employee.name).join(', '),
+      user_type: userType, organization: String(body.organization || ''), lob: String(body.lob || ''),
+      tsh: String(body.tsh || ''), store_code: String(body.storeCode || '').toUpperCase(),
+      store_name: String(body.storeName || body.store || ''),
+    };
+    if ([profileMetadata.lob, profileMetadata.tsh, profileMetadata.store_code].some((value) => value.includes('|'))) {
+      return jsonResponse({ error: 'Nama LOB, TSH, dan kode toko tidak boleh berisi karakter |.' }, 400);
+    }
+    if (!profileMetadata.organization
+      || (userType === 'LOB' && !profileMetadata.lob)
+      || (userType === 'TSH' && (!profileMetadata.lob || !profileMetadata.tsh))
+      || (userType === 'Store Leader' && (!profileMetadata.lob || !profileMetadata.tsh || !profileMetadata.store_code || !profileMetadata.store_name))
+      || (needsEmployeeCodes && (!profileMetadata.lob || !profileMetadata.tsh || !profileMetadata.store_code || !profileMetadata.store_name))) {
+      return jsonResponse({ error: 'Lengkapi data LOB, TSH, dan toko sesuai role akun.' }, 400);
+    }
+    profileMetadata.full_name ||= username;
+    const { data: created, error: createError } = await admin.auth.admin.createUser({
+      email, password, email_confirm: true, user_metadata: profileMetadata,
+    });
     if (createError) throw createError;
     createdUserId = created.user.id;
 
     const profileRow = {
-      id: createdUserId, username, full_name: employees.map((employee: { name: string }) => employee.name).join(', '),
-      role: 'user', lob: String(body.lob || ''), tsh: String(body.tsh || ''),
-      store_code: String(body.storeCode || ''), store_name: String(body.storeName || ''), must_change_password: true,
+      id: createdUserId, username, email, full_name: profileMetadata.full_name, role: 'user',
+      user_type: userType, organization: profileMetadata.organization, lob: profileMetadata.lob,
+      tsh: profileMetadata.tsh, store_code: profileMetadata.store_code, store_name: profileMetadata.store_name,
+      must_change_password: true, account_status: 'approved', approved_by: authData.user.id, approved_at: new Date().toISOString(),
     };
-    const { error: profileError } = await admin.from('profiles').insert(profileRow);
+    const { error: profileError } = await admin.from('profiles').upsert(profileRow, { onConflict: 'id' });
     if (profileError) throw profileError;
     const staffRows = employees.map((employee: { code: string; name: string }) => ({
       code: employee.code.trim().toUpperCase(), name: employee.name.trim(), lob: profileRow.lob,
       tsh: profileRow.tsh, store_code: profileRow.store_code, store_name: profileRow.store_name,
     }));
-    const { error: staffError } = await admin.from('staff').insert(staffRows);
-    if (staffError) throw staffError;
-    const { error: accessError } = await admin.from('staff_access').insert(employeeCodes.map((staff_code: string) => ({ user_id: createdUserId, staff_code })));
-    if (accessError) throw accessError;
+    if (staffRows.length) {
+      const { error: staffError } = await admin.from('staff').insert(staffRows);
+      if (staffError) throw staffError;
+      insertedStaffCodes = employeeCodes;
+      const { error: accessError } = await admin.from('staff_access').insert(employeeCodes.map((staff_code: string) => ({ user_id: createdUserId, staff_code })));
+      if (accessError) throw accessError;
+    }
     return jsonResponse({ ok: true });
   } catch (error) {
-    if (createdUserId) await admin.auth.admin.deleteUser(createdUserId);
-    return jsonResponse({ error: errorMessage(error) }, 400);
+    let rollbackFailure = '';
+    if (createdUserId) {
+      if (insertedStaffCodes.length) {
+        const { error: staffCleanupError } = await admin.from('staff').delete().in('code', insertedStaffCodes);
+        if (staffCleanupError) rollbackFailure = staffCleanupError.message;
+      }
+      const { error: userCleanupError } = await admin.auth.admin.deleteUser(createdUserId);
+      if (userCleanupError) rollbackFailure = [rollbackFailure, userCleanupError.message].filter(Boolean).join('; ');
+    }
+    const message = errorMessage(error);
+    return jsonResponse({ error: rollbackFailure ? `${message} Rollback tidak tuntas: ${rollbackFailure}` : message }, 400);
   }
 });
