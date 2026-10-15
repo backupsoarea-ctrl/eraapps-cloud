@@ -213,7 +213,7 @@
     }
     if (reload) await loadCloudData();
   };
-  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization });
+  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '', fullName = '', nik = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization, fullName, nik });
   const updateAccountEmployeeRequirements = () => {
     const userType = $('newUserType').value;
     const required = ['ERO', 'Promotor'].includes(userType);
@@ -222,6 +222,7 @@
     $('newTsh').required = ['TSH', 'Store Leader', 'ERO', 'Promotor'].includes(userType);
     $('newStoreCode').required = ['Store Leader', 'ERO', 'Promotor'].includes(userType);
     $('newStore').required = ['Store Leader', 'ERO', 'Promotor'].includes(userType);
+    $('newStore').placeholder = required || userType === 'Store Leader' ? 'Nama toko' : 'Tidak wajib untuk role ini';
     document.querySelectorAll('.employee-account-row').forEach(row => {
       row.querySelector('.employee-code').required = required;
       row.querySelector('.employee-name').required = required;
@@ -272,129 +273,28 @@
     finally { setBusy(button, false); }
   }, true);
 
-  const registrationRoleFields = {
-    LOB: ['registrationOrganization', 'registrationLob'],
-    TSH: ['registrationOrganization', 'registrationLob', 'registrationTsh'],
-    'Store Leader': ['registrationOrganization', 'registrationLob', 'registrationTsh', 'registrationStoreCode', 'registrationStoreName'],
-    ERO: ['registrationOrganization', 'registrationLob', 'registrationTsh', 'registrationStoreCode', 'registrationStoreName'],
-    Promotor: ['registrationOrganization', 'registrationLob', 'registrationTsh', 'registrationStoreCode', 'registrationStoreName'],
-  };
-  const updateRegistrationRequirements = () => {
-    const requiredFields = new Set(registrationRoleFields[$('registrationType').value] || []);
-    ['registrationOrganization', 'registrationLob', 'registrationTsh', 'registrationStoreCode', 'registrationStoreName'].forEach(id => {
-      $(id).required = requiredFields.has(id);
-    });
-  };
-  $('openRegistration').onclick = () => {
-    $('loginOverlay').style.display = 'none';
-    $('registrationOverlay').style.display = 'flex';
-    $('registrationStatus').textContent = '';
-    updateRegistrationRequirements();
-  };
-  $('cancelRegistration').onclick = () => {
-    $('registrationOverlay').style.display = 'none';
-    $('loginOverlay').style.display = 'flex';
-  };
-  $('registrationType').addEventListener('change', updateRegistrationRequirements);
-  updateRegistrationRequirements();
-  document.getElementById('registrationForm').addEventListener('submit', async event => {
-    stopEvent(event);
-    if (!client) {
-      $('registrationStatus').textContent = 'Pendaftaran belum tersedia karena Supabase belum dikonfigurasi.';
-      return;
-    }
-    const username = $('registrationUsername').value.trim().toLowerCase();
-    const email = $('registrationEmail').value.trim().toLowerCase();
-    const password = $('registrationPassword').value;
-    if (!/^[a-z0-9._-]{3,40}$/.test(username)) {
-      $('registrationStatus').textContent = 'Username harus 3-40 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.';
-      return;
-    }
-    if (password !== $('registrationConfirm').value) {
-      $('registrationStatus').textContent = 'Konfirmasi password tidak cocok.';
-      return;
-    }
-    const button = event.target.querySelector('button[type="submit"]');
-    setBusy(button, true, 'Mendaftarkan...');
-    $('registrationStatus').textContent = '';
-    try {
-      const { data, error } = await client.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}${window.location.pathname}`,
-          data: {
-            username, full_name: $('registrationName').value.trim(), user_type: $('registrationType').value,
-            nik: $('registrationNik').value.trim(), organization: $('registrationOrganization').value.trim(),
-            lob: $('registrationLob').value.trim(), tsh: $('registrationTsh').value.trim(),
-            store_code: $('registrationStoreCode').value.trim().toUpperCase(),
-            store_name: $('registrationStoreName').value.trim(),
-          },
-        },
-      });
-      if (error) fail(error, 'Pendaftaran gagal.');
-      if (data.session) {
-        const profile = await profileFor(data.user.id);
-        if (profile.role !== 'admin' && profile.account_status !== 'approved') {
-          await client.auth.signOut();
-          event.target.reset();
-          updateRegistrationRequirements();
-          $('registrationStatus').textContent = 'Pendaftaran berhasil. Akun menunggu persetujuan dari penanggung jawab area/toko.';
-          return;
-        }
-        currentUser = { role: profile.role, profile, account: null };
-        await loadCloudData();
-        $('logoutButton').hidden = false;
-        enterCloudApp(profile.role, profile.role === 'user' ? currentUser.account : null);
-        watchCloud();
-      } else {
-        event.target.reset();
-        updateRegistrationRequirements();
-        $('registrationStatus').className = 'login-success';
-        $('registrationStatus').textContent = 'Pendaftaran berhasil. Periksa email untuk konfirmasi, lalu tunggu persetujuan dari penanggung jawab area/toko.';
-      }
-    } catch (error) {
-      $('registrationStatus').className = 'login-error';
-      $('registrationStatus').textContent = error?.message || 'Pendaftaran gagal. Periksa data dan coba lagi.';
-    } finally { setBusy(button, false); }
-  }, true);
-
   document.getElementById('passwordResetForm').addEventListener('submit', async event => {
     stopEvent(event);
-    try {
-      await callFunction('password-reset-request', { code: $('resetBarcode').value.trim().toUpperCase(), name: $('resetEmployeeName').value.trim() }, true);
-      event.target.reset(); $('passwordResetStatus').className = 'login-success'; $('passwordResetStatus').textContent = 'Permintaan terkirim dan menunggu persetujuan admin.';
-    } catch (error) { $('passwordResetStatus').textContent = error.message; }
-  }, true);
-
-  $('openAdminRecovery').onclick = () => {
-    $('loginOverlay').style.display = 'none';
-    $('adminRecoveryOverlay').style.display = 'flex';
-    $('adminRecoveryStatus').textContent = '';
-  };
-  $('cancelAdminRecovery').onclick = () => {
-    $('adminRecoveryOverlay').style.display = 'none';
-    $('loginOverlay').style.display = 'flex';
-  };
-  document.getElementById('adminRecoveryForm').addEventListener('submit', async event => {
-    stopEvent(event);
-    const token = $('adminRecoveryToken').value.trim();
-    const password = $('adminRecoveryPassword').value;
-    if (password.length < 12 || password !== $('adminRecoveryConfirm').value) {
-      $('adminRecoveryStatus').textContent = 'Password baru tidak cocok atau kurang dari 12 karakter.';
+    const email = $('resetEmail').value.trim().toLowerCase();
+    if (!email) {
+      $('passwordResetStatus').textContent = 'Masukkan email akun yang terdaftar.';
       return;
     }
     const button = event.target.querySelector('button[type="submit"]');
-    setBusy(button, true, 'Memulihkan...');
+    setBusy(button, true, 'Mengirim...');
+    $('passwordResetStatus').className = 'login-error';
+    $('passwordResetStatus').textContent = '';
     try {
-      await callFunction('admin-recover-password', { token, password }, true);
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}${window.location.pathname}`,
+      });
+      if (error) fail(error);
       event.target.reset();
-      $('adminRecoveryOverlay').style.display = 'none';
-      $('loginOverlay').style.display = 'flex';
-      $('loginUsername').value = '';
-      $('loginError').textContent = 'Password admin berhasil diubah. Masukkan email atau username untuk login.';
+      $('passwordResetStatus').className = 'login-success';
+      $('passwordResetStatus').textContent = 'Jika email terdaftar, tautan pemulihan akan dikirim. Periksa kotak masuk dan folder spam.';
     } catch (error) {
-      $('adminRecoveryStatus').textContent = error.message;
+      $('passwordResetStatus').className = 'login-error';
+      $('passwordResetStatus').textContent = error.message || 'Tautan pemulihan gagal dikirim.';
     } finally { setBusy(button, false); }
   }, true);
 
@@ -449,8 +349,11 @@
     const status = $('accountFormStatus');
     status.textContent = '';
     status.className = 'mini';
-    const employees = [...document.querySelectorAll('.employee-account-row')].map(row => ({ code: row.querySelector('.employee-code').value.trim().toUpperCase(), name: row.querySelector('.employee-name').value.trim() }));
-    const needsEmployeeCodes = ['ERO', 'Promotor'].includes($('newUserType').value);
+    const employees = [...document.querySelectorAll('.employee-account-row')]
+      .map(row => ({ code: row.querySelector('.employee-code').value.trim().toUpperCase(), name: row.querySelector('.employee-name').value.trim() }))
+      .filter(person => person.code || person.name);
+    const userType = $('newUserType').value;
+    const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
     if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || (needsEmployeeCodes && !employees.length)) {
       status.textContent = 'Periksa username (3-40 karakter), password (minimal 6 karakter), dan karyawan untuk role ERO/Promotor.';
       status.className = 'login-error';
@@ -462,10 +365,10 @@
       return;
     }
     try {
-      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), employees, $('newUserType').value, $('newOrganization').value.trim()), $('accountForm').querySelector('button[type="submit"]'));
-      status.textContent = 'Akun berhasil dibuat dan tersimpan di Supabase.';
+      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), employees, userType, $('newOrganization').value.trim(), $('newFullName').value.trim(), $('newNik').value.trim()), $('accountForm').querySelector('button[type="submit"]'));
+      status.textContent = 'Akun aktif berhasil dibuat. Password awal wajib diganti saat login pertama.';
       status.className = 'login-success';
-      event.target.reset(); $('newStore').value = 'M.H.A WEB';
+      event.target.reset();
       updateAccountEmployeeRequirements();
       $('newEmployeeRows').innerHTML = '<div class="staffrow employee-account-row"><input class="employee-code" required placeholder="Kode barcode, mis. EA006"><input class="employee-name" required placeholder="Nama karyawan"><span></span></div>';
     } catch (error) { status.textContent = error.message || 'Akun gagal dibuat.'; status.className = 'login-error'; showError(error); }
@@ -504,16 +407,26 @@
     stopEvent(event);
     if (!pendingAccountImport.length) return;
     const button = $('saveAccountImport'); setBusy(button, true, 'Menyimpan...');
+    const grouped = new Map();
+    pendingAccountImport.forEach(item => { if (!grouped.has(item.username)) grouped.set(item.username, []); grouped.get(item.username).push(item); });
+    const total = grouped.size;
+    let imported = 0;
     try {
-      const grouped = new Map();
-      pendingAccountImport.forEach(item => { if (!grouped.has(item.username)) grouped.set(item.username, []); grouped.get(item.username).push(item); });
       for (const [username, employees] of grouped) {
         const first = employees[0];
-        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, employees, 'ERO', first.organization || first.storeName));
+        const staffRows = employees.filter(item => item.code).map(item => ({ code: item.code, name: item.name }));
+        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, staffRows, first.userType, first.organization, first.fullName, first.nik));
+        pendingAccountImport = pendingAccountImport.filter(item => item.username !== username);
+        imported++;
       }
-      pendingAccountImport = []; $('importAccountStatus').textContent = 'Import berhasil disimpan ke cloud.'; $('accountExcelFile').value = '';
+      $('importAccountStatus').textContent = `Berhasil membuat ${imported} akun. Akun aktif di Supabase; password awal wajib diganti saat login pertama.`;
+      $('accountExcelFile').value = ''; $('saveAccountImport').disabled = true;
       await loadCloudData(); notifyUploadSaved('Import akun tersimpan online.');
-    } catch (error) { showError(error); }
+    } catch (error) {
+      $('importAccountStatus').textContent = `Berhasil membuat ${imported} dari ${total} akun. Import tersisa tetap disiapkan agar dapat dicoba ulang. ${error.message}`;
+      $('saveAccountImport').disabled = !pendingAccountImport.length;
+      showError(error);
+    }
     finally { setBusy(button, false); }
   }, true);
 

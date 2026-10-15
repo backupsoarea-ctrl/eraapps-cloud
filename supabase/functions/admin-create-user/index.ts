@@ -42,13 +42,10 @@ Deno.serve(async (request) => {
       if (existingStaffError) throw existingStaffError;
       if (existingStaff?.length) return jsonResponse({ error: `Kode karyawan sudah digunakan: ${existingStaff.map((item) => item.code).join(', ')}.` }, 409);
     }
-    const { count, error: countError } = await admin.from('staff').select('code', { count: 'exact', head: true });
-    if (countError) throw countError;
-    if ((count || 0) + employees.length > 30) return jsonResponse({ error: 'Maksimal 30 karyawan.' }, 400);
     const email = `${username}@eraapps.invalid`;
     const profileMetadata = {
       username, full_name: fullName || employees.map((employee: { name: string }) => employee.name).join(', '),
-      user_type: userType, organization: String(body.organization || ''), lob: String(body.lob || ''),
+      user_type: userType, nik: String(body.nik || ''), organization: String(body.organization || ''), lob: String(body.lob || ''),
       tsh: String(body.tsh || ''), store_code: String(body.storeCode || '').toUpperCase(),
       store_name: String(body.storeName || body.store || ''),
     };
@@ -71,7 +68,7 @@ Deno.serve(async (request) => {
 
     const profileRow = {
       id: createdUserId, username, email, full_name: profileMetadata.full_name, role: 'user',
-      user_type: userType, organization: profileMetadata.organization, lob: profileMetadata.lob,
+      user_type: userType, nik: profileMetadata.nik, organization: profileMetadata.organization, lob: profileMetadata.lob,
       tsh: profileMetadata.tsh, store_code: profileMetadata.store_code, store_name: profileMetadata.store_name,
       must_change_password: true, account_status: 'approved', approved_by: authData.user.id, approved_at: new Date().toISOString(),
     };
