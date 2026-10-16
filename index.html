@@ -750,7 +750,7 @@ $('accountExcelFile').onchange=async e=>{
  try{
   if(!window.XLSX)throw new Error('Library Excel belum tersedia.');
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
-  const norm=value=>String(value??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
+  const norm=value=>String(value??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/[()]/g,' ').replace(/\s+/g,' ').trim();
   const readSheet=(name)=>{
    const sheet=workbook.Sheets[name];if(!sheet)throw new Error(`Sheet ${name} tidak ditemukan.`);
   const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''}).filter(row=>row.some(value=>String(value??'').trim())&&String(row[0]??'').trim().toUpperCase()!=='CONTOH_JANGAN_UPLOAD');
@@ -758,28 +758,36 @@ $('accountExcelFile').onchange=async e=>{
    return{rows,column};
   };
   const loginSheet=readSheet('Akun Login'),staffSheet=readSheet('Pendaftaran Karyawan');
-  const loginColumns={username:loginSheet.column('username'),email:loginSheet.column('email'),password:loginSheet.column('password'),userType:loginSheet.column('user_type','user type'),fullName:loginSheet.column('full_name','full name'),nik:loginSheet.column('nik_karyawan','nik karyawan'),bu:loginSheet.column('bu')};
-  const staffColumns={username:staffSheet.column('username'),email:staffSheet.column('email'),password:staffSheet.column('password'),userType:staffSheet.column('user_type','user type'),nik:staffSheet.column('nik_karyawan','nik karyawan'),fullName:staffSheet.column('name_full','name full'),storeCode:staffSheet.column('store_code','store code'),storeName:staffSheet.column('store_name','store name'),storeLeader:staffSheet.column('store_leader','store leader'),tsh:staffSheet.column('tsh'),lob:staffSheet.column('lob'),bu:staffSheet.column('bu')};
+  const loginColumns={username:loginSheet.column('username'),email:loginSheet.column('email'),password:loginSheet.column('password'),userType:loginSheet.column('user_type','user type','role'),fullName:loginSheet.column('full_name','full name','nama lengkap'),nik:loginSheet.column('nik_karyawan','nik karyawan','nik'),bu:loginSheet.column('bu','bu badan usaha','business unit')};
+  const staffColumns={username:staffSheet.column('username'),email:staffSheet.column('email'),password:staffSheet.column('password'),userType:staffSheet.column('user_type','user type','role'),nik:staffSheet.column('nik_karyawan','nik karyawan','nik'),fullName:staffSheet.column('name_full','name full','nama lengkap'),storeCode:staffSheet.column('store_code','store code','kode toko'),storeName:staffSheet.column('store_name','store name','nama toko'),storeLeader:staffSheet.column('store_leader','store leader','store leader username','username store leader'),tsh:staffSheet.column('tsh'),lob:staffSheet.column('lob'),bu:staffSheet.column('bu','bu badan usaha','business unit')};
   if(Object.values(loginColumns).some(index=>index<0)||Object.values(staffColumns).some(index=>index<0))throw new Error('Header kedua sheet tidak cocok. Unduh template login dan pendaftaran karyawan terbaru.');
   const readValue=(row,index)=>String(row[index]??'').trim();
-  const loginRows=loginSheet.rows.map(row=>({username:readValue(row,loginColumns.username),email:readValue(row,loginColumns.email).toLowerCase(),password:readValue(row,loginColumns.password),userType:readValue(row,loginColumns.userType),fullName:readValue(row,loginColumns.fullName),nik:readValue(row,loginColumns.nik),organization:readValue(row,loginColumns.bu)}));
-  const staffRows=staffSheet.rows.map(row=>({username:readValue(row,staffColumns.username),email:readValue(row,staffColumns.email).toLowerCase(),password:readValue(row,staffColumns.password),userType:readValue(row,staffColumns.userType),nik:readValue(row,staffColumns.nik),fullName:readValue(row,staffColumns.fullName),storeCode:readValue(row,staffColumns.storeCode).toUpperCase(),storeName:readValue(row,staffColumns.storeName),storeLeader:readValue(row,staffColumns.storeLeader),tsh:readValue(row,staffColumns.tsh),lob:readValue(row,staffColumns.lob),organization:readValue(row,staffColumns.bu)}));
+  const canonicalRole=value=>({ero:'ERO',promotor:'Promotor'}[norm(value)]||String(value??'').trim());
+  const loginRows=loginSheet.rows.map(row=>({username:readValue(row,loginColumns.username),email:readValue(row,loginColumns.email).toLowerCase(),password:readValue(row,loginColumns.password),userType:canonicalRole(readValue(row,loginColumns.userType)),fullName:readValue(row,loginColumns.fullName),nik:readValue(row,loginColumns.nik),organization:readValue(row,loginColumns.bu)}));
+  const staffRows=staffSheet.rows.map(row=>({username:readValue(row,staffColumns.username),email:readValue(row,staffColumns.email).toLowerCase(),password:readValue(row,staffColumns.password),userType:canonicalRole(readValue(row,staffColumns.userType)),nik:readValue(row,staffColumns.nik),fullName:readValue(row,staffColumns.fullName),storeCode:readValue(row,staffColumns.storeCode).toUpperCase(),storeName:readValue(row,staffColumns.storeName),storeLeader:readValue(row,staffColumns.storeLeader),tsh:readValue(row,staffColumns.tsh),lob:readValue(row,staffColumns.lob),organization:readValue(row,staffColumns.bu)}));
   if(!loginRows.length||!staffRows.length)throw new Error('Isi kedua sheet. Pendaftaran massal hanya mendukung akun ERO dan Promotor; LOB/TSH/Store Leader dibuat melalui form.');
   const validEmail=value=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-  if(loginRows.some(row=>!row.username||!validEmail(row.email)||row.password.length<6||!['ERO','Promotor'].includes(row.userType)||!row.fullName||!row.nik||!row.organization))throw new Error('Akun Login wajib berisi username, format email, password minimal 6 karakter, role ERO/Promotor, nama lengkap, NIK karyawan, dan BU. Email tidak diperiksa aktif/tidaknya.');
-  if(staffRows.some(row=>!row.username||!validEmail(row.email)||row.password.length<6||!['ERO','Promotor'].includes(row.userType)||!row.nik||!row.fullName||!row.storeCode||!row.storeName||!row.storeLeader||!row.tsh||!row.lob||!row.organization))throw new Error('Pendaftaran Karyawan wajib melengkapi identitas, toko, Store Leader, TSH, LOB, dan BU.');
+  const loginInvalid=loginRows.map((row,index)=>({row,index:index+2,missing:[!row.username&&'username',!validEmail(row.email)&&'email (format)',row.password.length<6&&'password (minimal 6 karakter)',!['ERO','Promotor'].includes(row.userType)&&'user_type (ERO/Promotor)',!row.fullName&&'full_name',!row.nik&&'NIK karyawan'].filter(Boolean)})).find(item=>item.missing.length);
+  if(loginInvalid)throw new Error(`Akun Login baris ${loginInvalid.row}: periksa ${loginInvalid.missing.join(', ')}.`);
+  const staffInvalid=staffRows.map((row,index)=>({row,index:index+2,missing:[!row.username&&'username',!validEmail(row.email)&&'email (format)',row.password.length<6&&'password (minimal 6 karakter)',!['ERO','Promotor'].includes(row.userType)&&'user_type (ERO/Promotor)',!row.nik&&'NIK karyawan',!row.fullName&&'Name full',!row.storeCode&&'store_code',!row.storeName&&'store_name',!row.storeLeader&&'store_leader',!row.tsh&&'TSH',!row.lob&&'LOB'].filter(Boolean)})).find(item=>item.missing.length);
+  if(staffInvalid)throw new Error(`Pendaftaran Karyawan baris ${staffInvalid.row}: periksa ${staffInvalid.missing.join(', ')}.`);
   if(new Set(loginRows.map(row=>row.username.toLowerCase())).size!==loginRows.length||new Set(staffRows.map(row=>row.username.toLowerCase())).size!==staffRows.length)throw new Error('Username harus unik dan hanya boleh muncul satu kali di setiap sheet.');
   const staffByUsername=new Map(staffRows.map(row=>[row.username.toLowerCase(),row]));
   if(loginRows.length!==staffRows.length||staffRows.some(row=>!loginRows.some(login=>login.username.toLowerCase()===row.username.toLowerCase())))throw new Error('Setiap baris akun ERO/Promotor harus memiliki satu pasangan dengan username sama di kedua sheet.');
   const importedNiks=new Set(),importedEmails=new Set();
   const parsed=loginRows.map(login=>{
    const employee=staffByUsername.get(login.username.toLowerCase());
-   if(!employee||['email','password','userType','nik','fullName','organization'].some(key=>login[key].toLowerCase()!==employee[key].toLowerCase()))throw new Error(`Data login dan karyawan untuk username ${login.username} tidak sama.`);
+  if(!employee)throw new Error(`Username ${login.username} tidak ditemukan pada sheet Pendaftaran Karyawan.`);
+  const mismatched=['email','password','userType','nik','fullName'].filter(key=>login[key].toLowerCase()!==employee[key].toLowerCase());
+  if(login.organization&&employee.organization&&login.organization.toLowerCase()!==employee.organization.toLowerCase())mismatched.push('BU');
+  if(mismatched.length)throw new Error(`Akun Login dan Pendaftaran Karyawan username ${login.username}: nilai ${mismatched.join(', ')} harus sama.`);
+  const organization=login.organization||employee.organization;
+  if(!organization)throw new Error(`Isi BU untuk username ${login.username} pada salah satu sheet.`);
    if(importedNiks.has(login.nik)||importedEmails.has(login.email)||accounts.some(account=>account.username?.toLowerCase()===login.username.toLowerCase()||account.email?.toLowerCase()===login.email||account.nik===login.nik))throw new Error(`Username, email, atau NIK karyawan ${login.username} sudah digunakan/berulang.`);
    importedNiks.add(login.nik);importedEmails.add(login.email);
    const leader=accounts.find(account=>account.username?.toLowerCase()===employee.storeLeader.toLowerCase()&&account.userType==='Store Leader'&&account.accountStatus==='approved');
    if(!leader||leader.lob?.toLowerCase()!==employee.lob.toLowerCase()||leader.tsh?.toLowerCase()!==employee.tsh.toLowerCase()||leader.storeCode?.toUpperCase()!==employee.storeCode.toUpperCase())throw new Error(`Store Leader ${employee.storeLeader} tidak cocok dengan toko, TSH, dan LOB akun ${login.username}.`);
-   return{...login,lob:employee.lob,tsh:employee.tsh,storeCode:employee.storeCode,storeName:employee.storeName,storeLeader:employee.storeLeader};
+  return{...login,organization,lob:employee.lob,tsh:employee.tsh,storeCode:employee.storeCode,storeName:employee.storeName,storeLeader:employee.storeLeader};
   });
   pendingAccountImport=parsed;$('saveAccountImport').disabled=false;status.textContent=`Template valid: ${parsed.length} akun login dan pendaftaran staf sudah cocok.`;
  }catch(err){pendingAccountImport=[];$('saveAccountImport').disabled=true;status.textContent='Import gagal: '+err.message}
