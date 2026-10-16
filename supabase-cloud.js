@@ -627,15 +627,18 @@
     const total = grouped.size;
     let imported = 0;
     try {
-      for (const [username, employees] of grouped) {
+      const roleOrder = { LOB: 0, TSH: 1, 'Store Leader': 2, ERO: 3, Promotor: 4 };
+      const importGroups = [...grouped].sort((left, right) => roleOrder[left[1][0].userType] - roleOrder[right[1][0].userType]);
+      for (const [username, employees] of importGroups) {
         const first = employees[0];
         const storeLeader = accounts.find(account => account.username?.toLowerCase() === first.storeLeader && account.userType === 'Store Leader');
         if (['ERO', 'Promotor'].includes(first.userType) && !storeLeader) throw new Error(`Store Leader ${first.storeLeader} tidak ditemukan.`);
         await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, [], first.userType, first.organization, first.fullName, first.nik, first.email, storeLeader?.id || ''));
         pendingAccountImport = pendingAccountImport.filter(item => item.username !== username);
         imported++;
+        if (['LOB', 'TSH', 'Store Leader'].includes(first.userType)) await loadCloudData();
       }
-      $('importAccountStatus').textContent = `Berhasil membuat ${imported} akun. Akun aktif di Supabase; password awal wajib diganti saat login pertama.`;
+      $('importAccountStatus').textContent = `Berhasil membuat ${imported} akun. ERO/Promotor menunggu approval Store Leader; password awal wajib diganti saat login pertama.`;
       $('accountExcelFile').value = ''; $('saveAccountImport').disabled = true;
       await loadCloudData(); notifyUploadSaved('Import akun tersimpan online.');
     } catch (error) {
