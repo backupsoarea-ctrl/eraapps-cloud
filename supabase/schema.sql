@@ -19,6 +19,10 @@ create table if not exists public.profiles (
   account_status text not null default 'approved',
   approved_by uuid references public.profiles(id),
   approved_at timestamptz,
+  password_changed_at timestamptz,
+  account_status_reason text not null default '',
+  rejected_by uuid references public.profiles(id),
+  rejected_at timestamptz,
   created_at timestamptz not null default now()
 );
 alter table public.profiles
@@ -29,7 +33,11 @@ alter table public.profiles
   add column if not exists organization text not null default '',
   add column if not exists account_status text not null default 'approved',
   add column if not exists approved_by uuid references public.profiles(id),
-  add column if not exists approved_at timestamptz;
+  add column if not exists approved_at timestamptz,
+  add column if not exists password_changed_at timestamptz,
+  add column if not exists account_status_reason text not null default '',
+  add column if not exists rejected_by uuid references public.profiles(id),
+  add column if not exists rejected_at timestamptz;
 
 update public.profiles p
 set email = lower(u.email)
@@ -73,12 +81,15 @@ $$;
 create table if not exists public.staff (
   code text primary key,
   name text not null,
+  nik text not null default '',
   lob text not null default '',
   tsh text not null default '',
   store_code text not null default '',
   store_name text not null default '',
   created_at timestamptz not null default now()
 );
+alter table public.staff add column if not exists nik text not null default '';
+create unique index if not exists staff_nik_unique_idx on public.staff(nik) where nik <> '';
 do $$
 begin
   if not exists (
@@ -87,6 +98,13 @@ begin
   ) then
     alter table public.staff add constraint staff_scope_segments_check
       check (position('|' in lob) = 0 and position('|' in tsh) = 0 and position('|' in store_code) = 0);
+  end if;
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.staff'::regclass and conname = 'staff_nik_format_check'
+  ) then
+    alter table public.staff add constraint staff_nik_format_check
+      check (nik = '' or nik ~ '^[0-9]{16}$');
   end if;
 end;
 $$;
@@ -129,6 +147,16 @@ create table if not exists public.admin_recovery_uses (
 alter table public.admin_recovery_uses enable row level security;
 revoke all on public.admin_recovery_uses from anon, authenticated;
 grant all on public.admin_recovery_uses to service_role;
+
+create table if not exists public.login_attempts (
+  username text primary key,
+  failed_attempts integer not null default 0,
+  locked_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table public.login_attempts enable row level security;
+revoke all on public.login_attempts from anon, authenticated;
+grant all on public.login_attempts to service_role;
 
 create table if not exists public.promo_folders (
   id uuid primary key default gen_random_uuid(),
@@ -196,6 +224,30 @@ create table if not exists public.app_settings (
 );
 insert into public.app_settings (id, value) values (true, '{}'::jsonb) on conflict (id) do nothing;
 
+create table if not exists public.admin_content (
+  id uuid primary key default gen_random_uuid(),
+  parent_id uuid references public.admin_content(id) on delete cascade,
+  title text not null,
+  kind text not null check (kind in ('folder', 'link', 'image', 'video', 'file')),
+  target_roles text[] not null default array['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'],
+  url text not null default '',
+  description text not null default '',
+  file_path text,
+  file_name text,
+  content_type text,
+  sort_order integer not null default 0,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint admin_content_target_roles_check
+    check (cardinality(target_roles) > 0 and target_roles <@ array['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor']::text[]),
+  constraint admin_content_payload_check
+    check ((kind = 'folder' and file_path is null and url = '')
+      or (kind = 'link' and url ~* '^https?://' and file_path is null)
+      or (kind in ('image', 'video', 'file') and file_path is not null and url = ''))
+);
+create index if not exists admin_content_parent_order_idx on public.admin_content(parent_id, sort_order, title);
+
 create or replace function public.current_user_is_admin()
 returns boolean
 language sql
@@ -215,8 +267,36 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.profiles
-    where id = auth.uid() and (role = 'admin' or account_status = 'approved')
+    where id = auth.uid() and (
+      role = 'admin'
+      or (
+        account_status = 'approved'
+        and coalesce(password_changed_at, created_at) >= now() - interval '90 days'
+        and not exists (
+          select 1 from public.login_attempts a
+          where a.username = public.profiles.username and a.locked_at is not null
+        )
+      )
+    )
   );
+$$;
+
+create or replace function public.current_user_can_read_admin_content(target_path text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_is_admin()
+    or (
+      public.current_user_is_approved()
+      and exists (
+        select 1 from public.admin_content c
+        join public.profiles p on p.id = auth.uid()
+        where c.file_path = target_path and p.user_type = any(c.target_roles)
+      )
+    );
 $$;
 
 create or replace function public.current_user_can_view_profile(target_user_id uuid)
@@ -229,7 +309,7 @@ as $$
   select case
     when actor.role = 'admin' then true
     when actor.id = target_user_id then true
-    when actor.account_status <> 'approved' then false
+    when not public.current_user_is_approved() then false
     when target.account_status not in ('approved', 'pending') then false
     when actor.user_type = 'LOB' then
       actor.lob <> '' and lower(actor.lob) = lower(target.lob)
@@ -259,7 +339,7 @@ set search_path = public
 as $$
   select case
     when actor.role = 'admin' then true
-    when actor.account_status <> 'approved' or actor.user_type = 'LOB' then false
+    when not public.current_user_is_approved() or actor.user_type = 'LOB' then false
     when actor.user_type = 'TSH' then
       actor.lob <> '' and actor.tsh <> ''
       and lower(actor.lob) = lower(person.lob) and lower(actor.tsh) = lower(person.tsh)
@@ -286,7 +366,7 @@ set search_path = public
 as $$
   select case
     when actor.role = 'admin' then true
-    when actor.account_status <> 'approved' then false
+    when not public.current_user_is_approved() then false
     when actor.user_type = 'LOB' then actor.lob <> '' and lower(actor.lob) = lower(person.lob)
     when actor.user_type = 'TSH' then
       actor.lob <> '' and actor.tsh <> ''
@@ -328,7 +408,7 @@ set search_path = public
 as $$
   select case
     when actor.role = 'admin' then true
-    when actor.account_status <> 'approved' or target.account_status <> 'pending' then false
+    when not public.current_user_is_approved() or target.account_status <> 'pending' then false
     when target.user_type = 'LOB' then false
     when target.user_type = 'TSH' then actor.user_type = 'LOB'
       and actor.lob <> '' and lower(actor.lob) = lower(target.lob)
@@ -355,7 +435,7 @@ set search_path = public
 as $$
   select case
     when actor.role = 'admin' then true
-    when actor.account_status <> 'approved' then false
+    when not public.current_user_is_approved() then false
     when target_scope_type = 'global' then true
     when target_scope_type = 'lob' then actor.lob <> '' and lower(actor.lob) = lower(target_scope_value)
     when target_scope_type = 'tsh' then
@@ -408,12 +488,8 @@ set search_path = public
 as $$
   select case
     when actor.role = 'admin' then true
-    when actor.account_status <> 'approved' then false
+    when not public.current_user_is_approved() then false
     when actor.user_type = 'LOB' and target_scope_type = 'lob' then actor.lob <> '' and lower(actor.lob) = lower(target_scope_value)
-    when actor.user_type = 'TSH' and target_scope_type = 'tsh' then
-      actor.lob <> '' and actor.tsh <> '' and lower(actor.lob || '|' || actor.tsh) = lower(target_scope_value)
-    when actor.user_type = 'Store Leader' and target_scope_type = 'store' then actor.lob <> '' and actor.tsh <> '' and actor.store_code <> ''
-      and lower(actor.lob || '|' || actor.tsh || '|' || actor.store_code) = lower(target_scope_value)
     else false
   end
   from public.profiles actor
@@ -474,7 +550,7 @@ as $$
   select public.current_user_is_admin()
     or exists (
       select 1 from public.profiles p
-      where p.id = auth.uid() and p.account_status = 'approved'
+      where p.id = auth.uid() and public.current_user_is_approved()
         and split_part(target_path, '/', 1) = 'promos'
         and (
           (p.user_type = 'LOB' and split_part(target_path, '/', 2) = 'lob'
@@ -506,10 +582,58 @@ language sql
 security definer
 set search_path = public
 as $$
-  update public.profiles set must_change_password = false where id = auth.uid();
+  update public.profiles
+  set must_change_password = false, password_changed_at = now()
+  where id = auth.uid();
 $$;
 revoke all on function public.mark_password_changed() from public;
 grant execute on function public.mark_password_changed() to authenticated;
+
+create or replace function public.record_login_failure(target_username text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  attempts integer;
+  normalized_username text := lower(trim(target_username));
+begin
+  if normalized_username !~ '^[a-z0-9._-]{3,40}$' then
+    raise exception 'Username tidak valid.';
+  end if;
+  insert into public.login_attempts (username, failed_attempts, locked_at)
+  values (normalized_username, 1, null)
+  on conflict (username) do update
+    set failed_attempts = case
+          when public.login_attempts.locked_at is null then public.login_attempts.failed_attempts + 1
+          else public.login_attempts.failed_attempts
+        end,
+        locked_at = case
+          when public.login_attempts.locked_at is null
+            and public.login_attempts.failed_attempts + 1 > 3 then now()
+          else public.login_attempts.locked_at
+        end,
+        updated_at = now()
+  returning failed_attempts into attempts;
+  return attempts;
+end;
+$$;
+revoke all on function public.record_login_failure(text) from public, anon, authenticated;
+grant execute on function public.record_login_failure(text) to service_role;
+
+create or replace function public.clear_login_failures(target_username text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.login_attempts
+  set failed_attempts = 0, locked_at = null, updated_at = now()
+  where username = lower(trim(target_username));
+$$;
+revoke all on function public.clear_login_failures(text) from public, anon, authenticated;
+grant execute on function public.clear_login_failures(text) to service_role;
 
 create or replace function public.create_profile_for_auth_user()
 returns trigger
@@ -569,7 +693,7 @@ begin
 
   insert into public.profiles (
     id, username, email, full_name, role, user_type, nik, organization,
-    lob, tsh, store_code, store_name, account_status
+    lob, tsh, store_code, store_name, account_status, password_changed_at
   ) values (
     new.id, profile_username, lower(new.email), profile_name, 'user', profile_type,
     trim(coalesce(metadata ->> 'nik', '')),
@@ -577,11 +701,29 @@ begin
     trim(coalesce(metadata ->> 'lob', '')),
     trim(coalesce(metadata ->> 'tsh', '')),
     upper(trim(coalesce(metadata ->> 'store_code', ''))),
-    trim(coalesce(metadata ->> 'store_name', '')), profile_status
+    trim(coalesce(metadata ->> 'store_name', '')), profile_status, now()
   );
   return new;
 end;
 $$;
+
+create or replace function public.sync_profile_email_from_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles set email = lower(new.email) where id = new.id;
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_profile_email_after_auth_email_change on auth.users;
+create trigger sync_profile_email_after_auth_email_change
+  after update of email on auth.users
+  for each row when (old.email is distinct from new.email)
+  execute function public.sync_profile_email_from_auth_user();
 
 drop trigger if exists create_profile_after_auth_signup on auth.users;
 create trigger create_profile_after_auth_signup
@@ -601,6 +743,7 @@ revoke all on function public.current_user_can_download_promo(text, text) from p
 revoke all on function public.current_user_can_read_media(text) from public;
 revoke all on function public.current_user_can_upload_promo_media(text) from public;
 revoke all on function public.current_user_can_delete_promo_media(text) from public;
+revoke all on function public.current_user_can_read_admin_content(text) from public;
 revoke all on function public.create_profile_for_auth_user() from public;
 grant execute on function public.current_user_is_admin() to authenticated;
 grant execute on function public.current_user_is_approved() to authenticated;
@@ -615,6 +758,7 @@ grant execute on function public.current_user_can_download_promo(text, text) to 
 grant execute on function public.current_user_can_read_media(text) to authenticated;
 grant execute on function public.current_user_can_upload_promo_media(text) to authenticated;
 grant execute on function public.current_user_can_delete_promo_media(text) to authenticated;
+grant execute on function public.current_user_can_read_admin_content(text) to authenticated;
 
 alter table public.profiles enable row level security;
 alter table public.staff enable row level security;
@@ -624,6 +768,7 @@ alter table public.password_reset_requests enable row level security;
 alter table public.promo_folders enable row level security;
 alter table public.promos enable row level security;
 alter table public.app_settings enable row level security;
+alter table public.admin_content enable row level security;
 
 drop policy if exists "profiles read self or admin" on public.profiles;
 drop policy if exists "profiles read hierarchy" on public.profiles;
@@ -649,6 +794,8 @@ drop policy if exists "promos scoped update" on public.promos;
 drop policy if exists "promos scoped delete" on public.promos;
 drop policy if exists "settings authenticated read" on public.app_settings;
 drop policy if exists "settings admin manage" on public.app_settings;
+drop policy if exists "admin content read by role" on public.admin_content;
+drop policy if exists "admin content admin manage" on public.admin_content;
 
 create policy "profiles read self or admin" on public.profiles for select to authenticated
   using (public.current_user_can_view_profile(id));
@@ -705,10 +852,21 @@ create policy "promos scoped delete" on public.promos for delete to authenticate
 create policy "settings authenticated read" on public.app_settings for select to authenticated using (public.current_user_is_approved());
 create policy "settings admin manage" on public.app_settings for all to authenticated
   using (public.current_user_is_admin()) with check (public.current_user_is_admin());
+create policy "admin content read by role" on public.admin_content for select to authenticated
+  using (
+    public.current_user_is_admin()
+    or (public.current_user_is_approved() and exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.user_type = any(target_roles)
+    ))
+  );
+create policy "admin content admin manage" on public.admin_content for all to authenticated
+  using (public.current_user_is_admin()) with check (public.current_user_is_admin());
 
 insert into storage.buckets (id, name, public)
-values ('attendance-proofs', 'attendance-proofs', false), ('app-media', 'app-media', false)
+values ('attendance-proofs', 'attendance-proofs', false), ('app-media', 'app-media', false), ('admin-content', 'admin-content', false)
 on conflict (id) do update set public = excluded.public;
+update storage.buckets set file_size_limit = 5242880 where id = 'admin-content';
 
 drop policy if exists "attendance proof read authorized" on storage.objects;
 drop policy if exists "attendance proof insert authorized" on storage.objects;
@@ -718,6 +876,8 @@ drop policy if exists "app media admin manage" on storage.objects;
 drop policy if exists "app media scoped read" on storage.objects;
 drop policy if exists "app media scoped insert" on storage.objects;
 drop policy if exists "app media scoped delete" on storage.objects;
+drop policy if exists "admin content media read scoped" on storage.objects;
+drop policy if exists "admin content media admin manage" on storage.objects;
 
 create policy "attendance proof read authorized" on storage.objects for select to authenticated
   using (bucket_id = 'attendance-proofs' and public.current_user_can_access_staff((storage.foldername(name))[1]));
@@ -737,6 +897,11 @@ create policy "app media scoped insert" on storage.objects for insert to authent
   );
 create policy "app media scoped delete" on storage.objects for delete to authenticated
   using (bucket_id = 'app-media' and public.current_user_can_delete_promo_media(name));
+create policy "admin content media read scoped" on storage.objects for select to authenticated
+  using (bucket_id = 'admin-content' and public.current_user_can_read_admin_content(name));
+create policy "admin content media admin manage" on storage.objects for all to authenticated
+  using (bucket_id = 'admin-content' and public.current_user_is_admin())
+  with check (bucket_id = 'admin-content' and public.current_user_is_admin());
 
 do $$
 begin
@@ -760,6 +925,9 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'app_settings') then
     alter publication supabase_realtime add table public.app_settings;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'admin_content') then
+    alter publication supabase_realtime add table public.admin_content;
   end if;
 end;
 $$;

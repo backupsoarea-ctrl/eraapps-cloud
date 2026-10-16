@@ -5,7 +5,7 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 ## Menyiapkan Supabase
 
 1. Buat proyek Supabase dan jalankan versi terbaru `supabase/schema.sql` melalui SQL Editor. Schema aman dijalankan ulang jika tabel atau policy sudah dibuat sebagian.
-2. Buat user admin di Authentication > Users. Gunakan email berbentuk `username@eraapps.invalid`, tandai email terkonfirmasi, dan tetapkan password admin.
+2. Buat user admin di Authentication > Users dengan alamat email yang dapat menerima pesan, tandai email terkonfirmasi, dan tetapkan password admin.
 3. Salin UUID user itu dan daftarkan profil admin di SQL Editor:
 
 	```sql
@@ -14,11 +14,26 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 	```
 
 	Username yang dipakai di form login harus sama dengan `username` di profil. User awal ini menjadi admin; akun pengguna dibuat admin dari menu **Akun & Pendaftaran**.
-4. Schema memisahkan role aplikasi `admin/user` dari tipe organisasi `profiles.user_type` (LOB, TSH, Store Leader, ERO, Promotor). Tabel `staff` yang sudah ada menjadi relasi area/toko melalui `lob`, `tsh`, dan `store_code`; migrasi tidak menghapus atau memindahkan data historis.
-5. Pendaftaran akun dikelola admin melalui **Akun & Pendaftaran**. Admin dapat membuat akun satu per satu atau mengunduh template Excel `.xlsx`, mengisinya, lalu mengunggahnya untuk membuat banyak akun sekaligus. Role yang didukung: LOB, TSH, Store Leader, ERO, dan Promotor. Akun yang dibuat admin langsung aktif dan harus mengganti password awal saat login pertama. Trigger Auth tetap membatasi akun yang dibuat lewat Supabase Auth menjadi `user` berstatus `pending`; pengguna tersebut tidak dapat masuk sebelum disetujui sesuai hierarki.
+4. Schema memisahkan role aplikasi `admin/user` dari tipe organisasi `profiles.user_type` (LOB, TSH, Store Leader, ERO, Promotor). Tabel `staff` yang sudah ada menjadi relasi area/toko melalui `lob`, `tsh`, dan `store_code`; migrasi hanya menambahkan `staff.nik` dan indeks unik, serta tidak mengganti `staff.code` atau memindahkan data absensi historis. Isi NIK setiap karyawan pada **Data Karyawan** sebelum mencetak barcode baru. Scanner menerima NIK dan kode lama selama transisi. Verifikasi kelengkapan sebelum mengganti seluruh label barcode:
+
+	```sql
+	select count(*) as staff_without_nik
+	from public.staff
+	where nik = '';
+
+	select nik, count(*) as duplicates
+	from public.staff
+	where nik <> ''
+	group by nik
+	having count(*) > 1;
+	```
+
+	`staff_without_nik` harus `0` dan query duplikat harus kosong. Indeks unik database juga menolak NIK ganda saat pemetaan.
+5. Pendaftaran akun dikelola admin melalui **Akun & Pendaftaran**. Admin dapat membuat akun satu per satu atau mengunduh template Excel `.xlsx`, mengisinya, lalu mengunggahnya untuk membuat banyak akun sekaligus. Role yang didukung: LOB, TSH, Store Leader, ERO, dan Promotor. Akun baru memerlukan username, email aktif, nama, dan NIK 16 digit; ERO/Promotor juga memerlukan NIK 16 digit untuk setiap karyawan terkait. Masukkan NIK di Excel sebagai teks untuk mempertahankan angka nol di awal. Email disimpan sebagai email Supabase Auth, sementara login tetap menerima username. Akun yang dibuat admin langsung aktif dan harus mengganti password awal saat login pertama. Akun lama tidak otomatis diubah. Trigger Auth tetap membatasi akun yang dibuat lewat Supabase Auth menjadi `user` berstatus `pending`; pengguna tersebut tidak dapat masuk sebelum disetujui sesuai hierarki.
 6. RLS menggunakan lingkup `profiles.lob/tsh/store_code`, `staff` dan tabel `staff_access`. LOB dapat membaca staff dan profil dalam LOB untuk monitoring tetapi policy database menolak SELECT/INSERT absensi dan Storage bukti absensi. TSH/Store Leader dapat memantau lingkupnya; akses absensi TSH/Store Leader memakai staff yang berada dalam area/toko sesuai RLS, sedangkan ERO/Promotor terbatas ke `staff_access`.
-7. Informasi dan promo lama tetap dianggap global. Konten baru oleh LOB, TSH, atau Store Leader ditandai dengan scope `lob`, `tsh`, atau `store`; RLS membatasi pembacaan dan pengelolaan konten/media pada scope tersebut. Konten global hanya dapat dibuat admin. Tombol unduh Promotor disembunyikan; karena file gambar yang ditampilkan di browser juga dapat disimpan dari browser, ini membatasi fitur unduh resmi, bukan screenshot/salinan teknis.
-8. ERO/Promotor mendapatkan akses absensi hanya melalui `staff_access`. Persetujuan Store Leader mengaitkan akun ERO/Promotor ke staff yang cocok di toko jika data staff sudah tersedia. Untuk tautan manual, gunakan contoh berikut:
+7. Informasi dan promo lama tetap dianggap global. Konten baru yang diterbitkan LOB memakai scope `lob`; RLS membatasi pembacaan dan pengelolaan pada lingkup tersebut. Hanya admin yang dapat mengunduh Highlight; tombol unduh Promotor disembunyikan. Karena gambar yang ditampilkan di browser juga dapat disimpan dari browser, ini membatasi fitur unduh resmi, bukan screenshot/salinan teknis.
+8. **Menu tambahan** dikelola Admin pada halaman **Menu tambahan**. Admin dapat membuat folder/submenu, tautan HTTPS/HTTP, gambar, video, PDF, Word, Excel, atau PowerPoint, lalu memilih role yang dapat melihatnya. Tabel `admin_content` dan bucket privat `admin-content` memakai RLS; batas unggahan bucket diberlakukan di server sebesar 5 MB. Isian draft dan file sementara disimpan lokal pada browser yang sedang digunakan dan dapat dilanjutkan setelah refresh di perangkat itu.
+9. ERO/Promotor mendapatkan akses absensi hanya melalui `staff_access`. Persetujuan Store Leader mengaitkan akun ERO/Promotor ke staff yang cocok di toko jika data staff sudah tersedia. Untuk tautan manual, gunakan contoh berikut:
 
 	```sql
 	insert into public.staff_access (user_id, staff_code)
@@ -29,16 +44,18 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 	on conflict do nothing;
 	```
 
-9. Di Supabase **Authentication > URL Configuration**, set **Site URL** ke `https://backupsoarea-ctrl.github.io/eraapps-cloud/` dan tambahkan URL itu ke **Redirect URLs** (misalnya `https://backupsoarea-ctrl.github.io/eraapps-cloud/**`). Ini memastikan tautan recovery kembali ke situs, bukan `localhost`. Pastikan layanan email Supabase aktif dan akun admin memakai alamat email yang dapat menerima email.
-10. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy Edge Functions:
+10. Di Supabase **Authentication > URL Configuration**, set **Site URL** ke `https://backupsoarea-ctrl.github.io/eraapps-cloud/` dan tambahkan URL itu ke **Redirect URLs** (misalnya `https://backupsoarea-ctrl.github.io/eraapps-cloud/**`). Ini memastikan tautan recovery kembali ke situs, bukan `localhost`. Pastikan layanan email Supabase aktif dan akun admin memakai alamat email yang dapat menerima email.
+11. Pasang Supabase CLI, lalu hubungkan folder ini ke proyek dan deploy Edge Functions:
 
 	```sh
 	supabase login
 	supabase link --project-ref PROJECT_REF
 	supabase functions deploy admin-create-user
+	supabase functions deploy username-login
 	supabase functions deploy approve-account
 	supabase functions deploy admin-delete-user
 	supabase functions deploy password-reset-request
+	supabase functions deploy password-reset-complete
 	supabase functions deploy resolve-password-reset
 	supabase functions deploy admin-recover-password
 	```
@@ -47,7 +64,7 @@ EraApps menyimpan akun, karyawan, absensi, pengaturan, reset password, dan promo
 
 	Setelah perubahan kode, deploy ulang function yang berubah. Jalankan versi terbaru `supabase/schema.sql` sebelum mengaktifkan fitur yang memerlukan perubahan skema.
 
-11. Pemulihan password dilakukan melalui **Lupa password?** pada halaman login. Masukkan alamat email aktif yang terdaftar di Supabase Auth; setelah tautan diklik, pengguna menetapkan password baru di EraApps. Pastikan akun admin memakai email yang dapat menerima pesan. Akun yang dibuat lewat menu admin memakai username sebagai email login (`username@eraapps.invalid`), sehingga untuk pemulihan email akun tersebut perlu diberi alamat email yang dapat menerima pesan di Supabase Auth. Pemulihan admin darurat tidak ditampilkan di halaman login.
+12. Pemulihan password dilakukan melalui **Lupa password?** pada halaman login. Masukkan email, nama lengkap, dan NIK yang sesuai dengan profil; akun admin dapat memulai pemulihan dengan email. Setelah tautan satu kali diklik, pengguna menetapkan password baru di EraApps dan akun non-admin kembali menunggu persetujuan. Akun lama yang alamat Auth-nya masih `@eraapps.invalid` tidak dapat menerima pesan reset; perbarui alamat akun lama secara terpisah sebelum meminta reset. Pemulihan admin darurat tidak ditampilkan di halaman login.
 
 ## Deploy ke GitHub Pages
 

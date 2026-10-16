@@ -5,11 +5,18 @@
   let realtimeChannel;
   let mediaSequence = 0;
   let recoveryFlow = false;
+  let customContent = [];
+  let pendingContentFile = null;
+  const contentDraftKey = 'eraapps_admin_content_draft_v1';
   const aliasEmail = username => `${String(username).trim().toLowerCase()}@eraapps.invalid`;
   const fail = (error, fallback = 'Operasi online gagal.') => { throw new Error(error?.message || fallback); };
   const check = result => { if (result.error) fail(result.error); return result.data; };
   const isImageFile = (contentType, fileName) => String(contentType || '').toLowerCase().startsWith('image/') || /\.(jpe?g|png|gif|webp|bmp|avif)$/i.test(String(fileName || ''));
   const isHighlightPath = path => { const value = String(path || '').toLowerCase(); return value === 'highlight' || value.startsWith('highlight/'); };
+  const passwordExpired = profile => {
+    const baseline = profile.password_changed_at || profile.created_at;
+    return baseline && Date.now() - new Date(baseline).getTime() >= 90 * 24 * 60 * 60 * 1000;
+  };
   const setBusy = (button, busy, label) => { if (!button) return; button.disabled = busy; if (busy) { button.dataset.originalLabel = button.textContent; button.textContent = label || 'Menyimpan...'; } else if (button.dataset.originalLabel) { button.textContent = button.dataset.originalLabel; delete button.dataset.originalLabel; } };
   const showError = error => { const message = error?.message || 'Terjadi kesalahan saat menghubungi server.'; if ($('loginOverlay').style.display !== 'none') $('loginError').textContent = message; else notify(message, 'err'); };
   const fileFromDataUrl = async data => (await fetch(data)).blob();
@@ -21,8 +28,56 @@
   const signedFileUrl = async (bucket, path) => {
     if (!path) return '';
     const { data, error } = await client.storage.from(bucket).createSignedUrl(path, 3600);
-    if (error) return '';
+    if (error) fail(error, `Gagal membuka file privat dari bucket ${bucket}.`);
     return data.signedUrl;
+  };
+  const openContentDraftDb = () => new Promise((resolve, reject) => {
+    const request = indexedDB.open('eraapps-content-drafts', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('drafts');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const storeDraftFile = async file => {
+    const db = await openContentDraftDb();
+    try {
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction('drafts', 'readwrite');
+        transaction.objectStore('drafts').put(file ? {
+          blob: file, name: file.name, type: file.type, lastModified: file.lastModified,
+        } : null, 'content-file');
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+    } finally { db.close(); }
+  };
+  const readDraftFile = async () => {
+    const db = await openContentDraftDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = db.transaction('drafts', 'readonly').objectStore('drafts').get('content-file');
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally { db.close(); }
+  };
+  const restoreContentDraft = async () => {
+    const raw = localStorage.getItem(contentDraftKey);
+    if (raw) {
+      const draft = JSON.parse(raw);
+      $('contentTitle').value = draft.title || '';
+      $('contentParent').dataset.selectedDraft = draft.parentId || '';
+      $('contentKind').value = draft.kind || 'folder';
+      $('contentUrl').value = draft.url || '';
+      $('contentDescription').value = draft.description || '';
+      document.querySelectorAll('[name="contentRole"]').forEach(input => { input.checked = (draft.roles || []).includes(input.value); });
+      updateContentKindFields();
+    }
+    const savedFile = await readDraftFile();
+    pendingContentFile = savedFile?.blob
+      ? new File([savedFile.blob], savedFile.name, { type: savedFile.type, lastModified: savedFile.lastModified })
+      : null;
+    if (raw || pendingContentFile) $('contentDraftStatus').textContent = `Draft dipulihkan${pendingContentFile ? ` · ${pendingContentFile.name}` : ''}.`;
   };
   const profileFor = async userId => {
     const result = await client.from('profiles').select('*').eq('id', userId).single();
@@ -30,7 +85,7 @@
   };
   const userAccountFrom = (profile, codes) => ({
     id: profile.id, username: profile.username, email: profile.email, name: profile.full_name, userType: profile.user_type || 'ERO',
-    accountStatus: profile.account_status || 'approved',
+    accountStatus: profile.account_status || 'approved', accountStatusReason: profile.account_status_reason || '',
     nik: profile.nik || '', organization: profile.organization || '', lob: profile.lob, tsh: profile.tsh,
     storeCode: profile.store_code, storeName: profile.store_name, store: profile.store_name,
     staffCodes: codes, code: codes[0] || '', activeCode: codes[0] || '', mustChangePassword: profile.must_change_password,
@@ -48,7 +103,7 @@
     const profile = currentUser.profile;
     const monitoringProfile = profile.role === 'user' && ['LOB', 'TSH', 'Store Leader'].includes(profile.user_type);
     const showAttendance = profile.role === 'admin' || profile.user_type !== 'LOB';
-    const [staffResult, logResult, folderResult, promoResult, settingsResult, profileResult, accessResult] = await Promise.all([
+    const [staffResult, logResult, folderResult, promoResult, settingsResult, profileResult, accessResult, contentResult] = await Promise.all([
       client.from('staff').select('*').order('code'),
       showAttendance
         ? client.from('attendance_logs').select('*').order('occurred_at', { ascending: false }).limit(5000)
@@ -58,8 +113,9 @@
       client.from('app_settings').select('value').eq('id', true).maybeSingle(),
       client.from('profiles').select('*').order('username'),
       client.from('staff_access').select('user_id,staff_code'),
+      client.from('admin_content').select('*').order('sort_order').order('title'),
     ]);
-    staff = check(staffResult).map(row => ({ code: row.code, name: row.name, lob: row.lob, tsh: row.tsh, storeCode: row.store_code, storeName: row.store_name, store: row.store_name }));
+    staff = check(staffResult).map(row => ({ code: row.code, nik: row.nik || '', name: row.name, lob: row.lob, tsh: row.tsh, storeCode: row.store_code, storeName: row.store_name, store: row.store_name }));
     const accessRows = check(accessResult);
     const profiles = check(profileResult);
     accounts = profiles
@@ -93,6 +149,13 @@
       bgImage: await signedFileUrl('app-media', storedSettings.bgImage),
       logo: await signedFileUrl('app-media', storedSettings.logo),
     };
+    customContent = await Promise.all(check(contentResult).map(async row => ({
+      id: row.id, parentId: row.parent_id, title: row.title, kind: row.kind,
+      targetRoles: row.target_roles || [], url: row.url, description: row.description,
+      filePath: row.file_path, fileName: row.file_name, contentType: row.content_type,
+      fileUrl: row.file_path ? await signedFileUrl('admin-content', row.file_path) : '',
+    })));
+    window.ERAAPPS_CUSTOM_CONTENT = customContent;
     if (profile.role === 'admin') {
       const resetResult = await client.from('password_reset_requests').select('*').order('requested_at', { ascending: false });
       passwordResetRequests = check(resetResult).map(row => ({ id: row.id, code: row.staff_code, name: row.employee_name, username: row.username, status: row.status, created: new Date(row.requested_at).toLocaleString('id-ID'), createdAt: new Date(row.requested_at).getTime() }));
@@ -102,6 +165,7 @@
     renderPasswordResetRequests();
     renderPromos();
     renderRoleDashboard();
+    renderCustomContent(customContent, profile.role === 'admin');
     render();
   };
   const refreshSoon = () => {
@@ -213,7 +277,7 @@
     }
     if (reload) await loadCloudData();
   };
-  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '', fullName = '', nik = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization, fullName, nik });
+  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '', fullName = '', nik = '', email = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization, fullName, nik, email });
   const updateAccountEmployeeRequirements = () => {
     const userType = $('newUserType').value;
     const required = ['ERO', 'Promotor'].includes(userType);
@@ -225,6 +289,7 @@
     $('newStore').placeholder = required || userType === 'Store Leader' ? 'Nama toko' : 'Tidak wajib untuk role ini';
     document.querySelectorAll('.employee-account-row').forEach(row => {
       row.querySelector('.employee-code').required = required;
+      row.querySelector('.employee-nik').required = required;
       row.querySelector('.employee-name').required = required;
     });
   };
@@ -241,6 +306,12 @@
     const type = role === 'admin' ? 'Admin' : (profile.user_type || 'ERO');
     $('headerUserName').textContent = `${name} · ${type}`;
     $('headerUserName').hidden = false;
+    const accountInfo = $('accountInfo');
+    if (accountInfo) {
+      accountInfo.textContent = `${profile.username || profile.email || name} · ${type}`;
+      accountInfo.title = [name, profile.email, profile.organization, profile.lob, profile.tsh, profile.store_name].filter(Boolean).join(' · ');
+      accountInfo.hidden = false;
+    }
     if (role === 'user') {
       $('attendancePanel').querySelector('h2').textContent = `${type} · Absensi Saya`;
       showUserPage(type === 'LOB' ? 'dashboard' : 'attendance');
@@ -254,21 +325,33 @@
     setBusy(button, true, 'Memeriksa...');
     try {
       const loginIdentifier = $('loginUsername').value.trim().toLowerCase();
-      const email = loginIdentifier.includes('@') ? loginIdentifier : aliasEmail(loginIdentifier);
-      const { data, error } = await client.auth.signInWithPassword({ email, password: $('loginPassword').value });
-      if (error) fail(error, 'Username atau password tidak sesuai.');
+      const result = await client.functions.invoke('username-login', {
+        body: { identifier: loginIdentifier, password: $('loginPassword').value },
+      });
+      if (result.error) {
+        const context = result.error.context;
+        const detail = context?.json ? await context.json().catch(() => null) : null;
+        throw new Error(detail?.error || 'Username atau password tidak sesuai.');
+      }
+      if (result.data?.error) throw new Error(result.data.error);
+      const session = result.data?.session;
+      if (!session?.access_token || !session?.refresh_token) throw new Error('Sesi login tidak diterima dari server.');
+      const sessionResult = await client.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+      if (sessionResult.error) fail(sessionResult.error);
+      const data = sessionResult.data;
       const profile = await profileFor(data.user.id);
       if (profile.role !== 'admin' && profile.account_status !== 'approved') {
         await client.auth.signOut();
         $('loginError').textContent = 'Akun Anda masih menunggu persetujuan sesuai hierarki organisasi.';
         return;
       }
+      const forcePasswordChange = profile.must_change_password || result.data?.must_change_password || passwordExpired(profile);
       currentUser = { role: profile.role, profile, account: null };
-      await loadCloudData();
+      if (!forcePasswordChange || profile.role === 'admin') await loadCloudData();
       $('logoutButton').hidden = false;
       enterCloudApp(profile.role, profile.role === 'user' ? currentUser.account : null);
-      if (profile.role === 'user' && profile.must_change_password) $('forcePasswordOverlay').style.display = 'flex';
-      watchCloud();
+      if (forcePasswordChange) $('forcePasswordOverlay').style.display = 'flex';
+      else watchCloud();
     } catch (error) { showError(error); }
     finally { setBusy(button, false); }
   }, true);
@@ -285,18 +368,46 @@
     $('passwordResetStatus').className = 'login-error';
     $('passwordResetStatus').textContent = '';
     try {
-      const { error } = await client.auth.resetPasswordForEmail(email, {
+      await callFunction('password-reset-request', {
+        email,
+        fullName: $('resetFullName').value.trim(),
+        nik: $('resetNik').value.trim(),
         redirectTo: `${window.location.origin}${window.location.pathname}`,
       });
-      if (error) fail(error);
       event.target.reset();
       $('passwordResetStatus').className = 'login-success';
-      $('passwordResetStatus').textContent = 'Jika email terdaftar, tautan pemulihan akan dikirim. Periksa kotak masuk dan folder spam.';
+      $('passwordResetStatus').textContent = 'Jika data akun cocok, tautan pemulihan akan dikirim. Periksa kotak masuk dan folder spam.';
     } catch (error) {
       $('passwordResetStatus').className = 'login-error';
       $('passwordResetStatus').textContent = error.message || 'Tautan pemulihan gagal dikirim.';
     } finally { setBusy(button, false); }
   }, true);
+
+  document.getElementById('openAdminRecovery').addEventListener('click', () => {
+    $('adminRecoveryForm').hidden = !$('adminRecoveryForm').hidden;
+  });
+  document.getElementById('submitAdminRecovery').addEventListener('click', async event => {
+    const token = $('adminRecoveryToken').value, password = $('adminRecoveryPassword').value;
+    if (!token || password.length < 12 || password !== $('adminRecoveryConfirm').value) {
+      $('passwordResetStatus').textContent = 'Masukkan kode pemulihan dan password baru minimal 12 karakter yang sama.';
+      return;
+    }
+    const button = event.currentTarget;
+    setBusy(button, true, 'Memulihkan...');
+    try {
+      await callFunction('admin-recover-password', { token, password });
+      $('adminRecoveryToken').value = '';
+      $('adminRecoveryPassword').value = '';
+      $('adminRecoveryConfirm').value = '';
+      $('adminRecoveryForm').hidden = true;
+      $('passwordResetStatus').className = 'login-success';
+      $('passwordResetStatus').textContent = 'Password admin berhasil diperbarui. Silakan masuk kembali.';
+    } catch (error) {
+      $('passwordResetStatus').className = 'login-error';
+      $('passwordResetStatus').textContent = error.message || 'Pemulihan admin gagal.';
+      showError(error);
+    } finally { setBusy(button, false); }
+  });
 
   document.getElementById('recoveryPasswordForm').addEventListener('submit', async event => {
     stopEvent(event);
@@ -310,12 +421,20 @@
     try {
       const { error } = await client.auth.updateUser({ password });
       if (error) fail(error);
+      const completion = await client.functions.invoke('password-reset-complete', { body: {} });
+      if (completion.error) {
+        const detail = completion.error.context?.json ? await completion.error.context.json().catch(() => null) : null;
+        throw new Error(detail?.error || completion.error.message || 'Status pemulihan akun gagal disimpan.');
+      }
+      if (completion.data?.error) throw new Error(completion.data.error);
       await client.auth.signOut();
       window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
       event.target.reset();
       $('recoveryPasswordOverlay').style.display = 'none';
       $('loginOverlay').style.display = 'flex';
-      $('loginError').textContent = 'Password berhasil diperbarui. Silakan masuk dengan password baru.';
+      $('loginError').textContent = completion.data?.requiresApproval
+        ? 'Password berhasil diperbarui. Akun menunggu persetujuan kembali sesuai hierarki organisasi.'
+        : 'Password berhasil diperbarui. Silakan masuk dengan password baru.';
     } catch (error) {
       $('recoveryPasswordError').textContent = error.message || 'Password gagal diperbarui.';
     } finally { setBusy(button, false); }
@@ -323,15 +442,20 @@
 
   document.getElementById('forcePasswordForm').addEventListener('submit', async event => {
     stopEvent(event);
-    const oldPassword = $('forceOldPassword').value, nextPassword = $('forceNewPassword').value;
+    const nextPassword = $('forceNewPassword').value;
     if (nextPassword.length < 6 || nextPassword !== $('forceConfirmPassword').value) { $('forcePasswordError').textContent = 'Password baru tidak cocok atau kurang dari 6 karakter.'; return; }
     try {
       const { error } = await client.auth.updateUser({ password: nextPassword });
       if (error) fail(error);
       check(await client.rpc('mark_password_changed'));
       currentUser.profile.must_change_password = false;
+      currentUser.profile.password_changed_at = new Date().toISOString();
       $('forcePasswordOverlay').style.display = 'none'; event.target.reset();
-      enterCloudApp('user', currentUser.account); notify('Password berhasil diperbarui.', 'ok');
+      const role = currentUser.profile.role;
+      if (role === 'user') await loadCloudData();
+      enterCloudApp(role, role === 'user' ? currentUser.account : null);
+      watchCloud();
+      notify('Password berhasil diperbarui.', 'ok');
     } catch (error) { $('forcePasswordError').textContent = error.message || 'Password gagal diperbarui.'; }
   }, true);
 
@@ -339,8 +463,9 @@
   document.getElementById('staffForm').addEventListener('submit', async event => {
     stopEvent(event);
     const code = $('staffCode').value.trim().toUpperCase(), name = $('staffName').value.trim();
-    if (!code || !name || staff.length >= 30 || staff.some(person => person.code === code)) return showError(new Error('Kode harus unik dan data karyawan maksimal 30.'));
-    try { check(await client.from('staff').insert({ code, name })); $('staffForm').reset(); await loadCloudData(); }
+    const nik = $('staffNik').value.trim();
+    if (!code || !name || !/^\d{16}$/.test(nik) || staff.length >= 30 || staff.some(person => person.code === code || person.nik === nik)) return showError(new Error('Kode harus unik, NIK harus 16 digit dan unik, serta maksimal 30 karyawan.'));
+    try { check(await client.from('staff').insert({ code, nik, name })); $('staffForm').reset(); await loadCloudData(); }
     catch (error) { showError(error); }
   }, true);
   document.getElementById('accountForm').addEventListener('submit', async event => {
@@ -350,8 +475,8 @@
     status.textContent = '';
     status.className = 'mini';
     const employees = [...document.querySelectorAll('.employee-account-row')]
-      .map(row => ({ code: row.querySelector('.employee-code').value.trim().toUpperCase(), name: row.querySelector('.employee-name').value.trim() }))
-      .filter(person => person.code || person.name);
+      .map(row => ({ code: row.querySelector('.employee-code').value.trim().toUpperCase(), nik: row.querySelector('.employee-nik').value.trim(), name: row.querySelector('.employee-name').value.trim() }))
+      .filter(person => person.code || person.nik || person.name);
     const userType = $('newUserType').value;
     const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
     if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || (needsEmployeeCodes && !employees.length)) {
@@ -359,25 +484,43 @@
       status.className = 'login-error';
       return;
     }
-    if (new Set(employees.map(person => person.code)).size !== employees.length || employees.some(person => staff.some(existing => existing.code === person.code))) {
-      status.textContent = 'Kode karyawan harus unik dan belum digunakan.';
+    if (accounts.some(account => account.nik === $('newNik').value.trim())) {
+      status.textContent = 'NIK akun sudah terdaftar.';
+      status.className = 'login-error';
+      return;
+    }
+    if (needsEmployeeCodes && employees.some(person => !/^\d{16}$/.test(person.nik))) {
+      status.textContent = 'Setiap karyawan ERO/Promotor wajib memiliki NIK 16 digit.';
+      status.className = 'login-error';
+      return;
+    }
+    if (new Set(employees.map(person => person.code)).size !== employees.length
+      || new Set(employees.map(person => person.nik).filter(Boolean)).size !== employees.filter(person => person.nik).length
+      || employees.some(person => staff.some(existing => existing.code === person.code || (person.nik && existing.nik === person.nik)))) {
+      status.textContent = 'Kode internal dan NIK karyawan harus unik dan belum digunakan.';
       status.className = 'login-error';
       return;
     }
     try {
-      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), employees, userType, $('newOrganization').value.trim(), $('newFullName').value.trim(), $('newNik').value.trim()), $('accountForm').querySelector('button[type="submit"]'));
+      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), employees, userType, $('newOrganization').value.trim(), $('newFullName').value.trim(), $('newNik').value.trim(), $('newEmail').value.trim().toLowerCase()), $('accountForm').querySelector('button[type="submit"]'));
       status.textContent = 'Akun aktif berhasil dibuat. Password awal wajib diganti saat login pertama.';
       status.className = 'login-success';
       event.target.reset();
       updateAccountEmployeeRequirements();
-      $('newEmployeeRows').innerHTML = '<div class="staffrow employee-account-row"><input class="employee-code" required placeholder="Kode barcode, mis. EA006"><input class="employee-name" required placeholder="Nama karyawan"><span></span></div>';
+      $('newEmployeeRows').innerHTML = '<div class="staffrow employee-account-row"><input class="employee-code" required placeholder="Kode internal, mis. EA006"><input class="employee-nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required placeholder="NIK karyawan"><input class="employee-name" required placeholder="Nama karyawan"><span></span></div>';
     } catch (error) { status.textContent = error.message || 'Akun gagal dibuat.'; status.className = 'login-error'; showError(error); }
   }, true);
   document.getElementById('roleInfoForm').addEventListener('submit', async event => {
     stopEvent(event);
     const profile = currentUser?.profile;
-    if (!profile || !['LOB', 'TSH', 'Store Leader'].includes(profile.user_type)) {
+    if (!profile || profile.user_type !== 'LOB') {
       $('roleInfoStatus').textContent = 'Role Anda tidak diizinkan menerbitkan informasi.';
+      return;
+    }
+    const body = sanitizeRichText($('roleInfoBody').innerHTML);
+    if (!body.replace(/<[^>]*>/g, '').trim()) {
+      $('roleInfoStatus').className = 'login-error';
+      $('roleInfoStatus').textContent = 'Isi informasi sebelum diterbitkan.';
       return;
     }
     const button = event.target.querySelector('button[type="submit"]');
@@ -388,13 +531,14 @@
       check(await client.from('promos').insert({
         folder_path: 'Umum',
         title: $('roleInfoTitle').value.trim(),
-        body: $('roleInfoBody').value.trim(),
+        body,
         is_highlight: false,
         scope_type: scope.type,
         scope_value: scope.value,
         created_by: profile.id,
       }));
       event.target.reset();
+      $('roleInfoBody').innerHTML = '';
       $('roleInfoStatus').className = 'login-success';
       $('roleInfoStatus').textContent = 'Informasi diterbitkan untuk lingkup Anda.';
       await loadCloudData();
@@ -414,8 +558,8 @@
     try {
       for (const [username, employees] of grouped) {
         const first = employees[0];
-        const staffRows = employees.filter(item => item.code).map(item => ({ code: item.code, name: item.name }));
-        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, staffRows, first.userType, first.organization, first.fullName, first.nik));
+        const staffRows = employees.filter(item => item.code).map(item => ({ code: item.code, nik: item.staffNik, name: item.name }));
+        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, staffRows, first.userType, first.organization, first.fullName, first.nik, first.email));
         pendingAccountImport = pendingAccountImport.filter(item => item.username !== username);
         imported++;
       }
@@ -430,6 +574,109 @@
     finally { setBusy(button, false); }
   }, true);
 
+  const updateContentKindFields = () => {
+    const kind = $('contentKind').value;
+    $('contentUrlLabel').hidden = kind !== 'link';
+    $('contentFileLabel').hidden = !['image', 'video', 'file'].includes(kind);
+    $('contentUrl').required = kind === 'link';
+    $('contentFile').required = ['image', 'video', 'file'].includes(kind) && !pendingContentFile;
+  };
+  const contentDraftSnapshot = () => ({
+    title: $('contentTitle').value, parentId: $('contentParent').value, kind: $('contentKind').value,
+    url: $('contentUrl').value, description: $('contentDescription').value,
+    roles: [...document.querySelectorAll('[name="contentRole"]:checked')].map(input => input.value),
+  });
+  const saveContentDraft = async saveFile => {
+    try {
+      localStorage.setItem(contentDraftKey, JSON.stringify(contentDraftSnapshot()));
+      if (saveFile) await storeDraftFile(pendingContentFile);
+      $('contentDraftStatus').textContent = `Draft tersimpan di perangkat ini${pendingContentFile ? ` · ${pendingContentFile.name}` : ''}.`;
+    } catch (error) {
+      $('contentDraftStatus').textContent = 'Draft gagal disimpan di perangkat ini.';
+      showError(error);
+    }
+  };
+  const clearContentDraft = async () => {
+    localStorage.removeItem(contentDraftKey);
+    await storeDraftFile(null);
+    pendingContentFile = null;
+    $('adminContentForm').reset();
+    updateContentKindFields();
+    $('contentDraftStatus').textContent = 'Draft dihapus.';
+  };
+  $('contentKind').addEventListener('change', () => { updateContentKindFields(); saveContentDraft(false); });
+  $('adminContentForm').addEventListener('input', () => saveContentDraft(false));
+  $('adminContentForm').addEventListener('change', event => {
+    if (event.target.id === 'contentFile') {
+      pendingContentFile = event.target.files[0] || null;
+      updateContentKindFields();
+      saveContentDraft(true);
+    } else saveContentDraft(false);
+  });
+  $('clearContentDraft').addEventListener('click', async () => {
+    try { await clearContentDraft(); }
+    catch (error) { showError(error); }
+  });
+  $('adminContentForm').addEventListener('submit', async event => {
+    stopEvent(event);
+    if (currentUser?.role !== 'admin') return showError(new Error('Hanya Admin yang dapat menambahkan menu.'));
+    const kind = $('contentKind').value;
+    const title = $('contentTitle').value.trim();
+    const description = $('contentDescription').value.trim();
+    const roles = [...document.querySelectorAll('[name="contentRole"]:checked')].map(input => input.value);
+    const parentId = $('contentParent').value || null;
+    if (!title || !roles.length) return showError(new Error('Isi nama menu dan pilih minimal satu role.'));
+    if (parentId) {
+      const parent = customContent.find(item => item.id === parentId);
+      if (!parent || parent.kind !== 'folder' || roles.some(role => !parent.targetRoles.includes(role))) {
+        return showError(new Error('Folder induk harus tersedia untuk semua role yang dipilih.'));
+      }
+    }
+    const url = $('contentUrl').value.trim();
+    if (kind === 'link') {
+      try {
+        const parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('URL harus menggunakan HTTP atau HTTPS.');
+      } catch (error) { return showError(error.message ? error : new Error('Masukkan URL valid dengan HTTP atau HTTPS.')); }
+    }
+    const file = pendingContentFile || $('contentFile').files[0] || null;
+    if (['image', 'video', 'file'].includes(kind) && !file) return showError(new Error('Pilih file yang akan disimpan.'));
+    if (file && file.size > 5 * 1024 * 1024) return showError(new Error('Ukuran file maksimal 5 MB.'));
+    if (kind === 'image' && !file?.type.startsWith('image/')) return showError(new Error('Pilih file gambar.'));
+    if (kind === 'video' && !file?.type.startsWith('video/')) return showError(new Error('Pilih file video.'));
+    if (kind === 'file' && !/\.(pdf|docx?|xlsx?|pptx?)$/i.test(file?.name || '')) {
+      return showError(new Error('File harus PDF, Word, Excel, atau PowerPoint.'));
+    }
+    const button = event.target.querySelector('button[type="submit"]');
+    const id = crypto.randomUUID();
+    let uploadedPath = '';
+    let recordInserted = false;
+    setBusy(button, true, 'Menyimpan...');
+    try {
+      if (file) {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        uploadedPath = `${id}/${safeName}`;
+        await upload('admin-content', uploadedPath, file);
+      }
+      check(await client.from('admin_content').insert({
+        id, parent_id: parentId, title, kind, target_roles: roles, url: kind === 'link' ? url : '',
+        description, file_path: uploadedPath || null, file_name: file?.name || null,
+        content_type: file?.type || null, created_by: currentUser.profile.id,
+      }));
+      recordInserted = true;
+      await clearContentDraft();
+      await loadCloudData();
+      notifyUploadSaved('Menu tambahan tersimpan dan ditampilkan sesuai role.');
+    } catch (error) {
+      let reportedError = error;
+      if (uploadedPath && !recordInserted) {
+        const { error: cleanupError } = await client.storage.from('admin-content').remove([uploadedPath]);
+        if (cleanupError) reportedError = new Error(`${error.message} File sementara tidak dapat dibersihkan: ${cleanupError.message}`);
+      }
+      showError(reportedError);
+    } finally { setBusy(button, false); }
+  }, true);
+
   document.getElementById('adminPasswordForm').addEventListener('submit', async event => {
     stopEvent(event);
     const next = $('adminNewPassword').value;
@@ -437,6 +684,7 @@
     try {
       const { error } = await client.auth.updateUser({ password: next });
       if (error) fail(error);
+      check(await client.rpc('mark_password_changed'));
       event.target.reset(); alert('Password admin berhasil diganti.');
     } catch (error) { showError(error); }
   }, true);
@@ -502,6 +750,35 @@
 
   document.addEventListener('click', async event => {
     const target = event.target.closest('button'); if (!target) return;
+    if (target.matches('[data-delete-content]')) {
+      stopEvent(event);
+      if (currentUser?.role !== 'admin') return showError(new Error('Hanya Admin yang dapat menghapus menu.'));
+      const item = customContent.find(content => content.id === target.dataset.deleteContent);
+      if (!item || !confirm(`Hapus "${item.title}" beserta semua submenu di dalamnya?`)) return;
+      setBusy(target, true, 'Menghapus...');
+      try {
+        check(await client.from('admin_content').delete().eq('id', item.id));
+        const descendants = new Set([item.id]);
+        let added = true;
+        while (added) {
+          added = false;
+          customContent.forEach(child => {
+            if (descendants.has(child.parentId) && !descendants.has(child.id)) {
+              descendants.add(child.id);
+              added = true;
+            }
+          });
+        }
+        const files = customContent.filter(content => descendants.has(content.id) && content.filePath).map(content => content.filePath);
+        if (files.length) {
+          const { error } = await client.storage.from('admin-content').remove(files);
+          if (error) throw new Error(`Menu terhapus, tetapi sebagian file tidak dapat dibersihkan: ${error.message}`);
+        }
+        await loadCloudData();
+      } catch (error) { showError(error); }
+      finally { setBusy(target, false); }
+      return;
+    }
     if (target.matches('[data-approve-reset],[data-reject-reset]')) {
       stopEvent(event);
       try { await callFunction('resolve-password-reset', { id: target.dataset.approveReset || target.dataset.rejectReset, approve: target.hasAttribute('data-approve-reset') }); await loadCloudData(); notifyUploadSaved('Permintaan reset diproses.'); }
@@ -516,6 +793,20 @@
         await callFunction('approve-account', { userId: target.dataset.approveAccount, staffCodes });
         await loadCloudData();
         notify('Akun disetujui.', 'ok');
+      } catch (error) { showError(error); }
+      finally { setBusy(target, false); }
+      return;
+    }
+    if (target.matches('[data-reject-account]')) {
+      stopEvent(event);
+      const reason = target.closest('.person').querySelector('[data-reject-reason]').value;
+      if (!reason) return showError(new Error('Pilih alasan reject: resign atau pindah toko.'));
+      if (!confirm('Tolak akun dengan alasan yang dipilih?')) return;
+      setBusy(target, true, 'Memproses...');
+      try {
+        await callFunction('approve-account', { userId: target.dataset.rejectAccount, approve: false, reason });
+        await loadCloudData();
+        notify('Akun ditolak. Pemilik akun akan melihat instruksi untuk menghubungi atasannya.', 'ok');
       } catch (error) { showError(error); }
       finally { setBusy(target, false); }
       return;
@@ -576,14 +867,21 @@
 
   document.addEventListener('change', async event => {
     const input = event.target;
-    if (!(input.matches('[data-code]') || input.matches('[data-name]'))) return;
+    if (!(input.matches('[data-code]') || input.matches('[data-name]') || input.matches('[data-nik]'))) return;
     stopEvent(event);
-    const oldCode = input.dataset.code, row = input.closest('.staffrow');
+    const oldCode = input.dataset.code || input.dataset.name || input.dataset.nik, row = input.closest('.staffrow');
     const code = (row.querySelector('[data-code]')?.value || oldCode).trim().toUpperCase();
+    const nik = (row.querySelector('[data-nik]')?.value || '').trim();
     const name = (row.querySelector('[data-name]')?.value || '').trim();
-    if (!code || !name || staff.some(person => person.code === code && person.code !== oldCode)) return showError(new Error('Kode harus unik dan nama/kode tidak boleh kosong.'));
+    const existingStaff = staff.find(person => person.code === oldCode);
+    const validNik = /^\d{16}$/.test(nik) || (!nik && existingStaff?.nik === '');
+    if (!code || !name || !validNik
+      || staff.some(person => person.code === code && person.code !== oldCode)
+      || (nik && staff.some(person => person.nik === nik && person.code !== oldCode))) {
+      return showError(new Error('Kode internal harus unik; NIK yang diisi wajib 16 digit dan unik; nama wajib diisi.'));
+    }
     if (code !== oldCode && logs.some(item => item.code === oldCode)) return showError(new Error('Kode tidak dapat diubah setelah memiliki riwayat online. Ubah nama saja atau tambahkan karyawan baru.'));
-    try { check(await client.from('staff').update({ code, name }).eq('code', oldCode)); await loadCloudData(); }
+    try { check(await client.from('staff').update({ code, nik, name }).eq('code', oldCode)); await loadCloudData(); }
     catch (error) { showError(error); }
   }, true);
 
@@ -595,6 +893,8 @@
   async function boot() {
     staff = []; logs = []; accounts = []; promos = []; promoFolders = []; passwordResetRequests = [];
     appSettings = {};
+    try { await restoreContentDraft(); }
+    catch (error) { $('contentDraftStatus').textContent = 'Draft lokal tidak dapat dipulihkan.'; showError(error); }
     save = () => render();
     storeAccounts = () => renderAccounts();
     savePasswordResetRequests = () => updatePasswordResetBadge();
@@ -632,10 +932,15 @@
           return;
         }
         currentUser = { role: profile.role, profile, account: null };
-        await loadCloudData(); $('logoutButton').hidden = false;
+        const forcePasswordChange = profile.must_change_password || passwordExpired(profile);
+        if (!forcePasswordChange || profile.role === 'admin') await loadCloudData();
+        $('logoutButton').hidden = false;
         enterCloudApp(profile.role, profile.role === 'user' ? currentUser.account : null);
-        if (profile.role === 'user' && profile.must_change_password) $('forcePasswordOverlay').style.display = 'flex';
-        watchCloud();
+        if (forcePasswordChange) {
+          $('forcePasswordOverlay').style.display = 'flex';
+        } else {
+          watchCloud();
+        }
       } else render();
     } catch (error) { showError(error); }
   }

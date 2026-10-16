@@ -32,7 +32,12 @@ Deno.serve(async (request) => {
 
     const body = await request.json();
     const targetId = String(body.userId || '');
+    const decision = body.approve === false || body.decision === 'reject' ? 'rejected' : 'approved';
+    const rejectionReason = String(body.reason || '');
     if (!/^[0-9a-f-]{36}$/i.test(targetId)) return jsonResponse({ error: 'ID akun tidak valid.' }, 400);
+    if (decision === 'rejected' && !['resign', 'pindah_toko'].includes(rejectionReason)) {
+      return jsonResponse({ error: 'Pilih alasan penolakan: resign atau pindah toko.' }, 400);
+    }
 
     const { data: target, error: targetError } = await admin
       .from('profiles')
@@ -68,7 +73,7 @@ Deno.serve(async (request) => {
       return jsonResponse({ error: 'Data organisasi/area/toko akun belum lengkap.' }, 400);
     }
 
-    if (['ERO', 'Promotor'].includes(target.user_type)) {
+    if (decision === 'approved' && ['ERO', 'Promotor'].includes(target.user_type)) {
       let requestedCodes = Array.isArray(body.staffCodes)
         ? [...new Set(body.staffCodes.map((code: unknown) => String(code).trim().toUpperCase()))]
         : [];
@@ -108,9 +113,11 @@ Deno.serve(async (request) => {
     const { data: updated, error: updateError } = await admin
       .from('profiles')
       .update({
-        account_status: 'approved',
-        approved_by: actor.id,
-        approved_at: new Date().toISOString(),
+        account_status: decision,
+        account_status_reason: decision === 'rejected' ? rejectionReason : '',
+        ...(decision === 'approved'
+          ? { approved_by: actor.id, approved_at: new Date().toISOString(), rejected_by: null, rejected_at: null }
+          : { rejected_by: actor.id, rejected_at: new Date().toISOString() }),
       })
       .eq('id', target.id)
       .eq('account_status', 'pending')
@@ -119,7 +126,7 @@ Deno.serve(async (request) => {
     if (updateError) throw updateError;
     if (!updated) return jsonResponse({ error: 'Akun sudah disetujui oleh pengguna lain.' }, 409);
 
-    return jsonResponse({ ok: true });
+    return jsonResponse({ ok: true, decision });
   } catch (error) {
     return jsonResponse({ error: errorMessage(error) }, 400);
   }

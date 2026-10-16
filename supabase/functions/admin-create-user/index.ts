@@ -24,28 +24,44 @@ Deno.serve(async (request) => {
   try {
     const body = await request.json();
     const username = String(body.username || '').trim().toLowerCase();
+    const email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
     const userType = String(body.userType || 'ERO');
     const fullName = String(body.fullName || '');
+    const nik = String(body.nik || '').trim();
     const employees = Array.isArray(body.employees) ? body.employees : [];
     const allowedUserTypes = ['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'];
     const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || (needsEmployeeCodes && !employees.length) || !allowedUserTypes.includes(userType)) {
-      return jsonResponse({ error: 'Username, password, role pengguna, atau data karyawan tidak valid.' }, 400);
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.endsWith('@eraapps.invalid') || password.length < 6 || !/^\d{16}$/.test(nik) || !fullName.trim() || (needsEmployeeCodes && !employees.length) || (!needsEmployeeCodes && employees.length > 0) || !allowedUserTypes.includes(userType)) {
+      return jsonResponse({ error: 'Username, email aktif, nama, NIK, password, role pengguna, atau data karyawan tidak valid.' }, 400);
     }
+    const { data: existingProfile, error: existingProfileError } = await admin
+      .from('profiles').select('id').eq('nik', nik).limit(1).maybeSingle();
+    if (existingProfileError) throw existingProfileError;
+    if (existingProfile) return jsonResponse({ error: 'NIK akun sudah terdaftar.' }, 409);
     const employeeCodes = employees.map((employee: { code?: string }) => String(employee.code || '').trim().toUpperCase());
-    if (new Set(employeeCodes).size !== employeeCodes.length || employees.some((employee: { code?: string; name?: string }) => !/^[A-Z0-9_-]{1,32}$/.test(String(employee.code || '').trim().toUpperCase()) || !String(employee.name || '').trim())) {
-      return jsonResponse({ error: 'Kode karyawan duplikat atau data karyawan tidak lengkap.' }, 400);
+    const employeeNiks = employees.map((employee: { nik?: string }) => String(employee.nik || '').trim());
+    if (new Set(employeeCodes).size !== employeeCodes.length
+      || new Set(employeeNiks).size !== employeeNiks.length
+      || employees.some((employee: { code?: string; name?: string; nik?: string }) =>
+        !/^[A-Z0-9_-]{1,32}$/.test(String(employee.code || '').trim().toUpperCase())
+        || !/^\d{16}$/.test(String(employee.nik || '').trim())
+        || !String(employee.name || '').trim())) {
+      return jsonResponse({ error: 'Kode internal harus unik; setiap NIK karyawan wajib 16 digit dan unik; nama karyawan wajib diisi.' }, 400);
     }
     if (employeeCodes.length) {
-      const { data: existingStaff, error: existingStaffError } = await admin.from('staff').select('code').in('code', employeeCodes);
+      const [{ data: existingStaff, error: existingStaffError }, { data: existingNiks, error: existingNiksError }] = await Promise.all([
+        admin.from('staff').select('code').in('code', employeeCodes),
+        admin.from('staff').select('nik').in('nik', employeeNiks),
+      ]);
       if (existingStaffError) throw existingStaffError;
-      if (existingStaff?.length) return jsonResponse({ error: `Kode karyawan sudah digunakan: ${existingStaff.map((item) => item.code).join(', ')}.` }, 409);
+      if (existingNiksError) throw existingNiksError;
+      if (existingStaff?.length) return jsonResponse({ error: `Kode internal sudah digunakan: ${existingStaff.map((item) => item.code).join(', ')}.` }, 409);
+      if (existingNiks?.length) return jsonResponse({ error: 'NIK karyawan sudah digunakan.' }, 409);
     }
-    const email = `${username}@eraapps.invalid`;
     const profileMetadata = {
       username, full_name: fullName || employees.map((employee: { name: string }) => employee.name).join(', '),
-      user_type: userType, nik: String(body.nik || ''), organization: String(body.organization || ''), lob: String(body.lob || ''),
+      user_type: userType, nik, organization: String(body.organization || ''), lob: String(body.lob || ''),
       tsh: String(body.tsh || ''), store_code: String(body.storeCode || '').toUpperCase(),
       store_name: String(body.storeName || body.store || ''),
     };
@@ -70,12 +86,13 @@ Deno.serve(async (request) => {
       id: createdUserId, username, email, full_name: profileMetadata.full_name, role: 'user',
       user_type: userType, nik: profileMetadata.nik, organization: profileMetadata.organization, lob: profileMetadata.lob,
       tsh: profileMetadata.tsh, store_code: profileMetadata.store_code, store_name: profileMetadata.store_name,
-      must_change_password: true, account_status: 'approved', approved_by: authData.user.id, approved_at: new Date().toISOString(),
+      must_change_password: true, password_changed_at: new Date().toISOString(),
+      account_status: 'approved', approved_by: authData.user.id, approved_at: new Date().toISOString(),
     };
     const { error: profileError } = await admin.from('profiles').upsert(profileRow, { onConflict: 'id' });
     if (profileError) throw profileError;
-    const staffRows = employees.map((employee: { code: string; name: string }) => ({
-      code: employee.code.trim().toUpperCase(), name: employee.name.trim(), lob: profileRow.lob,
+    const staffRows = employees.map((employee: { code: string; nik: string; name: string }) => ({
+      code: employee.code.trim().toUpperCase(), nik: employee.nik.trim(), name: employee.name.trim(), lob: profileRow.lob,
       tsh: profileRow.tsh, store_code: profileRow.store_code, store_name: profileRow.store_name,
     }));
     if (staffRows.length) {
