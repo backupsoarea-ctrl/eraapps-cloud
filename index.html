@@ -768,7 +768,11 @@ $('accountExcelFile').onchange=async e=>{
   const loginSheet=readSheet('Akun Login'),staffSheet=readSheet('Pendaftaran Karyawan');
   const loginColumns={username:loginSheet.column('username'),email:loginSheet.column('email'),password:loginSheet.column('password'),userType:loginSheet.column('user_type','user type','role'),fullName:loginSheet.column('full_name','full name','nama lengkap'),nik:loginSheet.column('nik_karyawan','nik karyawan','nik'),bu:loginSheet.column('bu','bu badan usaha','business unit'),lob:loginSheet.column('lob'),tsh:loginSheet.column('tsh'),storeCode:loginSheet.column('store_code','store code','kode toko'),storeName:loginSheet.column('store_name','store name','nama toko')};
   const staffColumns={username:staffSheet.column('username'),email:staffSheet.column('email'),password:staffSheet.column('password'),userType:staffSheet.column('user_type','user type','role'),nik:staffSheet.column('nik_karyawan','nik karyawan','nik'),fullName:staffSheet.column('name_full','name full','nama lengkap'),storeCode:staffSheet.column('store_code','store code','kode toko'),storeName:staffSheet.column('store_name','store name','nama toko'),storeLeader:staffSheet.column('store_leader','store leader','store leader username','username store leader'),tsh:staffSheet.column('tsh'),lob:staffSheet.column('lob'),bu:staffSheet.column('bu','bu badan usaha','business unit')};
-  if(Object.values(loginColumns).some(index=>index<0)||Object.values(staffColumns).some(index=>index<0))throw new Error('Header kedua sheet tidak cocok. Unduh template login dan pendaftaran karyawan terbaru.');
+  const requiredLoginColumns=['username','email','password','userType','fullName','nik','bu'];
+  const missingLoginHeaders=requiredLoginColumns.filter(name=>loginColumns[name]<0);
+  const missingStaffHeaders=Object.entries(staffColumns).filter(([,index])=>index<0).map(([name])=>name);
+  if(missingLoginHeaders.length)throw new Error(`Sheet Akun Login tidak memiliki kolom: ${missingLoginHeaders.join(', ')}. Unduh ulang template terbaru.`);
+  if(missingStaffHeaders.length)throw new Error(`Sheet Pendaftaran Karyawan tidak memiliki kolom: ${missingStaffHeaders.join(', ')}. Unduh ulang template terbaru.`);
   const readValue=(row,index)=>String(row[index]??'').trim();
   const canonicalRole=value=>({ero:'ERO',promotor:'Promotor',lob:'LOB',tsh:'TSH','store leader':'Store Leader'}[norm(value)]||String(value??'').trim());
   const loginRows=loginSheet.rows.map(row=>({username:readValue(row,loginColumns.username),email:readValue(row,loginColumns.email).toLowerCase(),password:readValue(row,loginColumns.password),userType:canonicalRole(readValue(row,loginColumns.userType)),fullName:readValue(row,loginColumns.fullName),nik:readValue(row,loginColumns.nik),organization:readValue(row,loginColumns.bu),lob:readValue(row,loginColumns.lob),tsh:readValue(row,loginColumns.tsh),storeCode:readValue(row,loginColumns.storeCode).toUpperCase(),storeName:readValue(row,loginColumns.storeName)}));
@@ -778,34 +782,79 @@ $('accountExcelFile').onchange=async e=>{
   const roles=['LOB','TSH','Store Leader','ERO','Promotor'];
   const missingLoginFields=row=>[
    !row.username&&'username',!validEmail(row.email)&&'email (format)',row.password.length<6&&'password (minimal 6 karakter)',
-   !roles.includes(row.userType)&&'user_type (LOB/TSH/Store Leader/ERO/Promotor)',!row.fullName&&'full_name',!row.nik&&'NIK karyawan',!row.organization&&'BU',
-   !row.lob&&'LOB',(['TSH','Store Leader','ERO','Promotor'].includes(row.userType)&&!row.tsh)&&'TSH',
-   (['Store Leader','ERO','Promotor'].includes(row.userType)&&!row.storeCode)&&'store_code',
-   (['Store Leader','ERO','Promotor'].includes(row.userType)&&!row.storeName)&&'store_name',
+    !roles.includes(row.userType)&&'user_type (LOB/TSH/Store Leader/ERO/Promotor)',!row.fullName&&'full_name',!row.nik&&'NIK karyawan',!row.organization&&'BU',
   ].filter(Boolean);
   const loginInvalid=loginRows.map((row,index)=>({rowNumber:index+2,missing:missingLoginFields(row)})).find(item=>item.missing.length);
   if(loginInvalid)throw new Error(`Akun Login baris ${loginInvalid.rowNumber}: periksa ${loginInvalid.missing.join(', ')}.`);
   const staffInvalid=staffRows.map((row,index)=>({rowNumber:index+2,missing:[!row.username&&'username',!validEmail(row.email)&&'email (format)',row.password.length<6&&'password (minimal 6 karakter)',!['ERO','Promotor'].includes(row.userType)&&'user_type (ERO/Promotor)',!row.nik&&'NIK karyawan',!row.fullName&&'Name full',!row.storeCode&&'store_code',!row.storeName&&'store_name',!row.storeLeader&&'store_leader',!row.tsh&&'TSH',!row.lob&&'LOB'].filter(Boolean)})).find(item=>item.missing.length);
   if(staffInvalid)throw new Error(`Pendaftaran Karyawan baris ${staffInvalid.rowNumber}: periksa ${staffInvalid.missing.join(', ')}.`);
-  if(new Set(loginRows.map(row=>row.username.toLowerCase())).size!==loginRows.length||new Set(staffRows.map(row=>row.username.toLowerCase())).size!==staffRows.length)throw new Error('Username harus unik dan hanya boleh muncul satu kali di setiap sheet.');
+  const sameValue=(left,right)=>String(left||'').trim().toLowerCase()===String(right||'').trim().toLowerCase();
+  const uniqueValue=(rows,field,identity)=>{
+   const matching=rows.filter(row=>identity.some(value=>sameValue(row[field],value)));
+   const source=matching.length?matching:rows;
+   const values=[...new Map(source.map(row=>[String(row[field]||'').trim().toLowerCase(),String(row[field]||'').trim()]).filter(([key])=>key)).values()];
+   return values.length===1?values[0]:'';
+  };
+  const scopedLoginRows=loginRows.map((login,index)=>{
+   if(!['LOB','TSH','Store Leader'].includes(login.userType))return login;
+   const buRows=staffRows.filter(row=>sameValue(row.organization,login.organization));
+   const identity=[login.username,login.fullName];
+   const resolve=(current,rows,field,label,required=true)=>{
+    const result=current||uniqueValue(rows,field,identity);
+    if(required&&!result)throw new Error(`Akun Login baris ${index+2}: ${label} tidak bisa ditentukan unik dari sheet Pendaftaran Karyawan; isi kolom scope tersebut di Akun Login.`);
+    return result;
+   };
+   if(login.userType==='LOB')return{...login,lob:resolve(login.lob,buRows,'lob','LOB')};
+   const lob=resolve(login.lob,buRows,'lob','LOB');
+   const lobRows=buRows.filter(row=>sameValue(row.lob,lob));
+   if(login.userType==='TSH')return{...login,lob,tsh:resolve(login.tsh,lobRows,'tsh','TSH')};
+   const leaderRows=buRows.filter(row=>identity.some(value=>sameValue(row.storeLeader,value)));
+   const scopeRows=leaderRows.length?leaderRows:lobRows;
+   const tsh=resolve(login.tsh,scopeRows,'tsh','TSH');
+   const storeCode=resolve(login.storeCode,scopeRows,'storeCode','store_code');
+   const storeName=resolve(login.storeName,scopeRows,'storeName','store_name');
+   return{...login,lob,tsh,storeCode,storeName};
+  });
+  if(new Set(scopedLoginRows.map(row=>row.username.toLowerCase())).size!==scopedLoginRows.length||new Set(staffRows.map(row=>row.username.toLowerCase())).size!==staffRows.length)throw new Error('Username harus unik dan hanya boleh muncul satu kali di setiap sheet.');
   const staffByUsername=new Map(staffRows.map(row=>[row.username.toLowerCase(),row]));
-  const employeeLogins=loginRows.filter(row=>['ERO','Promotor'].includes(row.userType));
-  if(employeeLogins.length!==staffRows.length||employeeLogins.some(row=>!staffByUsername.has(row.username.toLowerCase()))||staffRows.some(row=>!employeeLogins.some(login=>login.username.toLowerCase()===row.username.toLowerCase())))throw new Error('Setiap akun ERO/Promotor harus memiliki tepat satu pasangan di Pendaftaran Karyawan dengan username yang sama.');
+  const employeeLogins=scopedLoginRows.filter(row=>['ERO','Promotor'].includes(row.userType));
+  if(staffRows.some(row=>!employeeLogins.some(login=>login.username.toLowerCase()===row.username.toLowerCase())))throw new Error('Username pada Pendaftaran Karyawan tidak ditemukan sebagai akun ERO/Promotor pada Akun Login.');
   const importedNiks=new Set(),importedEmails=new Set();
-  const parsed=loginRows.map(login=>{
+  const parsed=scopedLoginRows.map(login=>{
    const employee=staffByUsername.get(login.username.toLowerCase());
    if(employee){
-    const mismatched=['email','password','userType','nik','fullName','organization','lob','tsh','storeCode','storeName'].filter(key=>login[key].toLowerCase()!==employee[key].toLowerCase());
+    const identityMismatches=['email','password','userType','nik','fullName','organization'].filter(key=>login[key].toLowerCase()!==employee[key].toLowerCase());
+    const scopeMismatches=['lob','tsh','storeCode','storeName'].filter(key=>login[key]&&!sameValue(login[key],employee[key]));
+    const mismatched=[...identityMismatches,...scopeMismatches];
     if(mismatched.length)throw new Error(`Akun Login/Pendaftaran Karyawan username ${login.username}: nilai ${mismatched.join(', ')} harus sama.`);
    }
    if(importedNiks.has(login.nik)||importedEmails.has(login.email)||accounts.some(account=>account.username?.toLowerCase()===login.username.toLowerCase()||account.email?.toLowerCase()===login.email||account.nik===login.nik))throw new Error(`Username, email, atau NIK karyawan ${login.username} sudah digunakan/berulang.`);
    importedNiks.add(login.nik);importedEmails.add(login.email);
-   const scope=employee||login,storeLeader=employee?.storeLeader||'';
+   let scope=employee||login,storeLeader=employee?.storeLeader||'';
+   if(!employee&&['ERO','Promotor'].includes(login.userType)){
+    const candidates=[...accounts.filter(account=>account.userType==='Store Leader'&&account.accountStatus==='approved'),...scopedLoginRows.filter(account=>account.userType==='Store Leader')];
+    const uniqueLeaders=[...new Map(candidates.filter(leader=>leader.organization?.toLowerCase()===login.organization.toLowerCase()
+      &&(!login.lob||leader.lob?.toLowerCase()===login.lob.toLowerCase())
+      &&(!login.tsh||leader.tsh?.toLowerCase()===login.tsh.toLowerCase())
+      &&(!login.storeCode||leader.storeCode?.toUpperCase()===login.storeCode.toUpperCase()))
+      .map(leader=>[leader.username.toLowerCase(),leader])).values()];
+    if(uniqueLeaders.length!==1)throw new Error(`Akun ${login.username} belum memiliki baris Pendaftaran Karyawan dan Store Leader pada BU/scope tersebut tidak tunggal. Tambahkan satu baris karyawan atau lengkapi scope Akun Login.`);
+    const leader=uniqueLeaders[0];
+    storeLeader=leader.username;
+    scope={...login,lob:login.lob||leader.lob,tsh:login.tsh||leader.tsh,storeCode:login.storeCode||leader.storeCode,storeName:login.storeName||leader.storeName};
+   }
    if(employee){
-    const leaderInAccounts=accounts.find(account=>account.username?.toLowerCase()===storeLeader.toLowerCase()&&account.userType==='Store Leader'&&account.accountStatus==='approved');
-    const leaderInImport=loginRows.find(account=>account.username.toLowerCase()===storeLeader.toLowerCase()&&account.userType==='Store Leader');
-    const leaderScope=leaderInAccounts||leaderInImport;
-    if(!leaderScope||leaderScope.lob?.toLowerCase()!==scope.lob.toLowerCase()||leaderScope.tsh?.toLowerCase()!==scope.tsh.toLowerCase()||leaderScope.storeCode?.toUpperCase()!==scope.storeCode.toUpperCase())throw new Error(`Store Leader ${storeLeader} tidak cocok dengan store_code, TSH, dan LOB akun ${login.username}.`);
+    const identifiesLeader=account=>[account.username,account.name,account.fullName].some(value=>String(value||'').trim().toLowerCase()===storeLeader.toLowerCase());
+    const sameScope=account=>account.lob?.toLowerCase()===scope.lob.toLowerCase()
+      &&account.tsh?.toLowerCase()===scope.tsh.toLowerCase()
+      &&account.storeCode?.toUpperCase()===scope.storeCode.toUpperCase()
+      &&account.organization?.toLowerCase()===scope.organization.toLowerCase();
+    const leaderCandidates=[
+     ...accounts.filter(account=>account.userType==='Store Leader'&&account.accountStatus==='approved'&&identifiesLeader(account)&&sameScope(account)),
+    ...scopedLoginRows.filter(account=>account.userType==='Store Leader'&&identifiesLeader(account)&&sameScope(account)),
+    ];
+    const distinctLeaders=[...new Map(leaderCandidates.map(account=>[account.username.toLowerCase(),account])).values()];
+    if(distinctLeaders.length!==1)throw new Error(`Store Leader "${storeLeader}" tidak ditemukan secara unik pada BU, store_code, TSH, dan LOB akun ${login.username}. Gunakan username atau nama Store Leader yang benar.`);
    }
    return{...login,lob:scope.lob||'',tsh:scope.tsh||'',storeCode:scope.storeCode||'',storeName:scope.storeName||'',storeLeader};
   });

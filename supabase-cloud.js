@@ -631,8 +631,13 @@
       const importGroups = [...grouped].sort((left, right) => roleOrder[left[1][0].userType] - roleOrder[right[1][0].userType]);
       for (const [username, employees] of importGroups) {
         const first = employees[0];
-        const storeLeader = accounts.find(account => account.username?.toLowerCase() === first.storeLeader && account.userType === 'Store Leader');
-        if (['ERO', 'Promotor'].includes(first.userType) && !storeLeader) throw new Error(`Store Leader ${first.storeLeader} tidak ditemukan.`);
+        const storeLeaderMatches = accounts.filter(account => account.userType === 'Store Leader'
+          && [account.username, account.name].some(value => String(value || '').trim().toLowerCase() === String(first.storeLeader || '').trim().toLowerCase())
+          && account.lob?.toLowerCase() === first.lob?.toLowerCase()
+          && account.tsh?.toLowerCase() === first.tsh?.toLowerCase()
+          && account.storeCode?.toUpperCase() === first.storeCode?.toUpperCase());
+        const storeLeader = storeLeaderMatches.length === 1 ? storeLeaderMatches[0] : null;
+        if (['ERO', 'Promotor'].includes(first.userType) && !storeLeader) throw new Error(`Store Leader "${first.storeLeader}" tidak ditemukan secara unik berdasarkan username/nama dan scope toko.`);
         await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, [], first.userType, first.organization, first.fullName, first.nik, first.email, storeLeader?.id || ''));
         pendingAccountImport = pendingAccountImport.filter(item => item.username !== username);
         imported++;
