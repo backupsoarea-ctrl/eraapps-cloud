@@ -295,10 +295,12 @@
   function buildMenu() {
     const style = document.createElement('style');
     style.textContent = '#logoutButton{position:fixed;top:10px;right:14px;z-index:10000;margin:0!important;min-width:64px}#langMenu{position:fixed;top:54px;right:14px;z-index:10000;display:flex;flex-direction:column;align-items:center;gap:4px;color:#fff;font-family:Helvetica,Arial,sans-serif}' +
-      '#langButton{width:38px;height:38px;border-radius:8px;border:2px solid #fff;background:#123b60;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:0;cursor:pointer}' +
+      '#langButton{position:relative;width:38px;height:38px;border:0;border-radius:0;background:transparent;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:0;cursor:pointer;transition:none}' +
+      '#langButton:hover,#langButton:active{filter:none;transform:none;box-shadow:none;background:transparent}' +
       '#langButton i{display:block;width:20px;height:2px;background:#fff}' +
-      '#langLabel{font-size:11px;font-weight:700;color:#fff;background:#123b60;padding:1px 7px;border-radius:6px}' +
-      '#accountInfo{position:fixed;top:57px;right:84px;z-index:10000;max-width:min(220px,calc(100vw - 128px));padding:4px 7px;color:#fff;background:#123b60;border-radius:6px;font-size:12px;font-weight:700;text-align:right;overflow-wrap:anywhere}#accountInfo[hidden]{display:none}' +
+      '#langLabel{font-size:11px;font-weight:700;line-height:19px;color:#fff;background:transparent;padding:0;border-radius:0}' +
+      '#accountInfo{position:fixed;top:96px;right:84px;z-index:10000;max-width:min(220px,calc(100vw - 128px));padding:0;color:#fff;background:transparent;border:0;border-radius:0;font-size:11px;font-weight:700;line-height:19px;text-align:right;overflow-wrap:anywhere}#accountInfo[hidden]{display:none}' +
+      '#loginCreditRow{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin:8px 0 16px}#loginCreditRow>p{flex:1;min-width:0;margin:0;color:#111;text-align:left}#loginCreditRow #langMenu{position:static;display:flex;flex-direction:column;align-items:center;gap:2px;color:#111;flex:none;transform:translateY(10px)}#loginCreditRow #langButton{width:34px;height:34px}#loginCreditRow #langButton i{background:#111}#loginCreditRow #langLabel{color:#111}' +
       '#langSelect{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer}' +
       '#langButton{position:relative}';
     document.head.appendChild(style);
@@ -306,7 +308,13 @@
     wrap.id = 'langMenu';
     wrap.setAttribute('data-no-i18n', '');
     wrap.innerHTML = '<div id="langButton" title="Language" aria-label="Language"><i></i><i></i><i></i><select id="langSelect" aria-label="Language"></select></div><span id="langLabel"></span>';
-    document.body.appendChild(wrap);
+    const credit = document.querySelector('#loginBrand')?.nextElementSibling;
+    if (credit?.parentElement) {
+      const row = document.createElement('div');
+      row.id = 'loginCreditRow';
+      credit.parentElement.insertBefore(row, credit);
+      row.append(credit, wrap);
+    } else document.body.appendChild(wrap);
     const accountInfo = document.createElement('span');
     accountInfo.id = 'accountInfo';
     accountInfo.hidden = true;

@@ -301,6 +301,8 @@
     const profile = currentUser.profile;
     const activeAccount = role === 'user' ? (account || currentUser.account) : null;
     enterApp(role, activeAccount);
+    const languageMenu = $('langMenu');
+    if (languageMenu) document.body.appendChild(languageMenu);
     currentUser = { role, profile, account: activeAccount };
     const name = profile.full_name || profile.username || profile.email || 'Pengguna';
     const type = role === 'admin' ? 'Admin' : (profile.user_type || 'ERO');

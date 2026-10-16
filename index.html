@@ -501,7 +501,9 @@ function applyAppearance(){
  document.body.style.background=appSettings.bgImage?`center / cover fixed url("${appSettings.bgImage}")`: (appSettings.bgColor||'var(--bg)');
  if(appSettings.logo){$('headerLogo').src=appSettings.logo;$('headerLogo').style.display='block';$('brandText').style.display='none'}
  $('loginBrand').hidden=true;
- $('loginBrand').nextElementSibling.textContent='Created by Helmi Alatas';
+ const loginCredit=$('loginBrand').nextElementSibling;
+ const loginCreditText=loginCredit?.id==='loginCreditRow'?loginCredit.querySelector('p'):loginCredit;
+ if(loginCreditText)loginCreditText.textContent='Created by Helmi Alatas';
 }
 function showUserPage(page){
  if(currentUser?.role!=='user')return;
