@@ -324,6 +324,7 @@
     const type = role === 'admin' ? 'Admin' : (profile.user_type || 'ERO');
     $('headerUserName').textContent = `${name} · ${type}`;
     $('headerUserName').hidden = false;
+    if ($('rolePreviewButton')) $('rolePreviewButton').hidden = role !== 'admin';
     const accountInfo = $('accountInfo');
     if (accountInfo) {
       accountInfo.textContent = `${profile.username || profile.email || name} · ${type}`;
@@ -930,7 +931,7 @@
   }, true);
 
   const logout = document.createElement('button');
-  logout.id = 'logoutButton'; logout.className = 'secondary'; logout.textContent = 'Keluar'; logout.hidden = true;
+  logout.id = 'logoutButton'; logout.className = 'secondary'; logout.innerHTML = '<span aria-hidden="true">⏻</span>'; logout.setAttribute('aria-label', 'Keluar'); logout.title = 'Keluar'; logout.hidden = true;
   logout.style.marginLeft = 'auto'; document.querySelector('header').appendChild(logout);
   logout.addEventListener('click', async () => { if (realtimeChannel) await client.removeChannel(realtimeChannel); await client.auth.signOut(); window.location.reload(); });
 

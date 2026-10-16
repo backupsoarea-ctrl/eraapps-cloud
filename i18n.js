@@ -19,6 +19,8 @@
     'Belum pulang': ['Not checked out', '未下班', 'لم ينصرف', 'Chưa về'],
     'Berikutnya': ['Next', '下一个', 'التالي', 'Tiếp'],
     'Sebelumnya': ['Previous', '上一个', 'السابق', 'Trước'],
+    'Setting': ['Settings', '设置', 'الإعدادات', 'Cài đặt'],
+    'Tampilan & Keamanan': ['Appearance & Security', '外观与安全', 'المظهر والأمان', 'Giao diện & Bảo mật'],
     'Bold': ['Bold', '粗体', 'غامق', 'In đậm'],
     'Italic': ['Italic', '斜体', 'مائل', 'In nghiêng'],
     'Underline': ['Underline', '下划线', 'تسطير', 'Gạch chân'],
@@ -124,6 +126,13 @@
     'Nama toko': ['Store name', '门店名称', 'اسم المتجر', 'Tên cửa hàng'],
     'Organisasi/perusahaan': ['Organization/company', '组织/公司', 'المنظمة/الشركة', 'Tổ chức/công ty'],
     'Password': ['Password', '密码', 'كلمة المرور', 'Mật khẩu'],
+    'Preview': ['Preview', '预览', 'معاينة', 'Xem trước'],
+    'Preview tampilan role': ['Role preview', '角色预览', 'معاينة الدور', 'Xem trước vai trò'],
+    'Pratinjau baca-saja. Data dan sesi admin tidak diubah.': ['Read-only preview. Admin data and session are not changed.', '只读预览，不会更改管理员数据或会话。', 'معاينة للقراءة فقط. لن يتم تغيير بيانات المسؤول أو جلسته.', 'Bản xem trước chỉ đọc. Không thay đổi dữ liệu hay phiên quản trị.'],
+    'Role yang dipratinjau': ['Role to preview', '要预览的角色', 'الدور المراد معاينته', 'Vai trò cần xem trước'],
+    'Akun contoh (opsional)': ['Example account (optional)', '示例账号（可选）', 'حساب نموذجي (اختياري)', 'Tài khoản mẫu (không bắt buộc)'],
+    'Contoh role': ['Role example', '角色示例', 'مثال الدور', 'Mẫu vai trò'],
+    'Tutup preview': ['Close preview', '关闭预览', 'إغلاق المعاينة', 'Đóng xem trước'],
     'Password admin baru': ['New admin password', '新管理员密码', 'كلمة مرور المدير الجديدة', 'Mật khẩu quản trị mới'],
     'Password admin saat ini': ['Current admin password', '当前管理员密码', 'كلمة مرور المدير الحالية', 'Mật khẩu quản trị hiện tại'],
     'Password awal': ['Initial password', '初始密码', 'كلمة المرور الأولية', 'Mật khẩu ban đầu'],
@@ -305,7 +314,7 @@
   }
   function buildMenu() {
     const style = document.createElement('style');
-    style.textContent = '#logoutButton{position:fixed;top:10px;right:14px;z-index:10000;margin:0!important;min-width:64px}#langMenu{position:fixed;top:54px;right:14px;z-index:10000;display:flex;flex-direction:column;align-items:center;gap:4px;color:#fff;font-family:Helvetica,Arial,sans-serif}' +
+    style.textContent = '#logoutButton{position:fixed;top:10px;right:14px;z-index:10000;margin:0!important;min-width:40px;width:40px;height:38px;padding:0!important;border:0!important;border-radius:0!important;background:transparent!important;color:#fff!important;box-shadow:none!important;font-size:24px;line-height:1;display:grid;place-items:center}#logoutButton:hover,#logoutButton:active{background:transparent!important;filter:none;transform:none;box-shadow:none!important}#logoutButton[hidden],#rolePreviewButton[hidden]{display:none!important}#rolePreviewButton{position:fixed;top:10px;right:76px;z-index:10000;margin:0!important;padding:8px 4px!important;border:0!important;border-radius:0!important;background:transparent!important;color:#fff!important;box-shadow:none!important;font-weight:700}#rolePreviewButton:hover,#rolePreviewButton:active{background:transparent!important;filter:none;transform:none;box-shadow:none!important}#langMenu{position:fixed;top:54px;right:14px;z-index:10000;display:flex;flex-direction:column;align-items:center;gap:4px;color:#fff;font-family:Helvetica,Arial,sans-serif}' +
       '#langButton{position:relative;width:38px;height:38px;border:0;border-radius:0;background:transparent;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:0;cursor:pointer;transition:none}' +
       '#langButton:hover,#langButton:active{filter:none;transform:none;box-shadow:none;background:transparent}' +
       '#langButton i{display:block;width:20px;height:2px;background:#fff}' +

@@ -193,6 +193,28 @@ td small{color:var(--muted)}
 .upload-toast-check{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#218a47;color:white;font-size:16px;flex:none}
 .photo-upload{position:relative;overflow:hidden}
 .photo-upload input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}
+.admin-settings-menu{position:relative;display:inline-block;margin:0 8px 14px 0;z-index:30}
+.admin-settings-submenu{position:absolute;top:calc(100% - 8px);left:0;min-width:240px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 26px #102b4624}
+.admin-settings-submenu[hidden]{display:none}
+.admin-settings-submenu button{display:flex;align-items:center;justify-content:space-between;width:100%;margin:0;padding:10px 12px;border-radius:5px;background:transparent;color:var(--ink);text-align:left}
+.admin-settings-submenu button:hover{background:#f1f5f8;box-shadow:none;transform:none}
+.role-preview-dialog{width:min(900px,calc(100vw - 28px));max-width:none;max-height:min(86vh,900px);padding:0;border:1px solid #d5dfe8;border-radius:8px;background:#fff;color:var(--ink);box-shadow:0 24px 70px #102b4650;overflow:auto}
+.role-preview-dialog::backdrop{background:#10182088}
+.role-preview-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.role-preview-head h2{margin:0;font-size:18px}
+.role-preview-head p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.role-preview-head button{width:36px;height:36px;padding:0;background:transparent;color:var(--ink);font-size:22px}
+.role-preview-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.role-preview-controls label{display:grid;gap:5px;font-weight:700;font-size:12px}
+.role-preview-workspace{padding:16px 18px}
+.role-preview-topline{display:flex;justify-content:space-between;gap:12px;padding:12px 14px;background:#f3f6f8;border-bottom:2px solid var(--red)}
+.role-preview-nav{display:flex;flex-wrap:wrap;gap:6px;padding:12px 0}
+.role-preview-nav span{padding:6px 9px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:12px}
+.role-preview-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.role-preview-section{min-width:0;padding:12px;border:1px solid var(--line);border-radius:6px}
+.role-preview-section h3{margin:0 0 8px;font-size:14px}
+.role-preview-section p{margin:4px 0;font-size:12px;overflow-wrap:anywhere}
+@media(max-width:640px){.role-preview-controls,.role-preview-columns{grid-template-columns:1fr}.admin-settings-submenu{min-width:min(260px,calc(100vw - 28px))}.role-preview-topline{flex-direction:column}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 
 *{font-family:Helvetica,Arial,sans-serif}input,select,textarea,button{font-family:inherit}header{padding-right:78px}</style></head><body>
@@ -369,6 +391,11 @@ td small{color:var(--muted)}
  </form><hr><h3>Menu yang tersimpan</h3><div id="adminContentList"></div>
 </div></div>
 <div class="foot">EraApps | created and developed by Helmi Alatas</div></main>
+<dialog id="rolePreviewDialog" class="role-preview-dialog admin-only" aria-labelledby="rolePreviewTitle">
+ <div class="role-preview-head"><div><h2 id="rolePreviewTitle">Preview tampilan role</h2><p>Pratinjau baca-saja. Data dan sesi admin tidak diubah.</p></div><button type="button" id="closeRolePreview" aria-label="Tutup preview">×</button></div>
+ <div class="role-preview-controls"><label>Role yang dipratinjau<select id="rolePreviewSelect"><option>LOB</option><option>TSH</option><option>Store Leader</option><option>ERO</option><option>Promotor</option></select></label><label>Akun contoh (opsional)<select id="rolePreviewAccount"><option value="">Contoh role</option></select></label></div>
+ <div id="rolePreviewBody" class="role-preview-workspace"></div>
+</dialog>
 <div id="uploadToast" class="upload-toast" role="status" aria-live="polite" hidden><span class="upload-toast-check" aria-hidden="true">✓</span><span id="uploadToastMessage">Upload berhasil disimpan</span></div>
 <script src="./i18n.js"></script><script src="./supabase-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script><script>
 const KEY='erafone_ciputat_attendance_v1', STAFFKEY='erafone_ciputat_staff_v1';
@@ -963,25 +990,60 @@ function showAdminPage(page){
  $('adminPromoPanel').hidden=page!=='promo';
  $('passwordResetPanel').hidden=page!=='passwordResetRequests';
  $('adminContentPanel').hidden=page!=='content';
+ const submenu=$('adminSettingsSubmenu');
+ if(submenu){submenu.hidden=true;$('adminSettingsToggle').setAttribute('aria-expanded','false')}
 }
 const dashboardButton=document.createElement('button');dashboardButton.className='secondary admin-only';dashboardButton.textContent='Dashboard';dashboardButton.style.margin='0 8px 14px 0';
 dashboardButton.onclick=()=>{showAdminPage('dashboard');render()};
 document.querySelector('main.wrap').insertBefore(dashboardButton,document.querySelector('.stats'));
-const accountsButton=document.createElement('button');accountsButton.className='secondary admin-only';accountsButton.textContent='Akun & Pendaftaran';accountsButton.style.margin='0 8px 14px 0';
-accountsButton.onclick=()=>{showAdminPage('accounts');renderAccounts()};
-document.querySelector('main.wrap').insertBefore(accountsButton,document.querySelector('.stats'));
-const settingsButton=document.createElement('button');settingsButton.className='secondary admin-only';settingsButton.textContent='⚙ Setting Admin';settingsButton.style.margin='0 8px 14px 0';
-settingsButton.onclick=()=>{showAdminPage('settings');renderAccounts()};
-document.querySelector('main.wrap').insertBefore(settingsButton,document.querySelector('.stats'));
-const promoButton=document.createElement('button');promoButton.className='secondary admin-only';promoButton.textContent='Promo / Informasi';promoButton.style.margin='0 8px 14px 0';
-promoButton.onclick=()=>{showAdminPage('promo');renderPromos()};
-document.querySelector('main.wrap').insertBefore(promoButton,document.querySelector('.stats'));
-const passwordResetButton=document.createElement('button');passwordResetButton.className='secondary admin-only';passwordResetButton.innerHTML='Persetujuan Reset Password<span id="passwordResetCount"></span>';passwordResetButton.style.margin='0 8px 14px 0';
-passwordResetButton.onclick=()=>{showAdminPage('passwordResetRequests');renderPasswordResetRequests()};
-document.querySelector('main.wrap').insertBefore(passwordResetButton,document.querySelector('.stats'));
-const contentButton=document.createElement('button');contentButton.className='secondary admin-only';contentButton.textContent='Menu tambahan';contentButton.style.margin='0 8px 14px 0';
-contentButton.onclick=()=>{showAdminPage('content');renderCustomContent(window.ERAAPPS_CUSTOM_CONTENT||[],true)};
-document.querySelector('main.wrap').insertBefore(contentButton,document.querySelector('.stats'));
+const settingsMenu=document.createElement('div');settingsMenu.id='adminSettingsMenu';settingsMenu.className='admin-settings-menu admin-only';
+settingsMenu.innerHTML='<button type="button" id="adminSettingsToggle" class="secondary" aria-haspopup="menu" aria-expanded="false"><span aria-hidden="true">⚙</span> <span>Setting</span></button><div id="adminSettingsSubmenu" class="admin-settings-submenu" role="menu" hidden><button type="button" data-admin-page="settings" role="menuitem">Tampilan & Keamanan</button><button type="button" data-admin-page="accounts" role="menuitem">Akun & Pendaftaran</button><button type="button" data-admin-page="promo" role="menuitem">Promo / Informasi</button><button type="button" data-admin-page="passwordResetRequests" role="menuitem">Persetujuan Reset Password <span id="passwordResetCount" class="approval-count"></span></button><button type="button" data-admin-page="content" role="menuitem">Menu tambahan</button></div>';
+document.querySelector('main.wrap').insertBefore(settingsMenu,document.querySelector('.stats'));
+const settingsToggle=$('adminSettingsToggle'),settingsSubmenu=$('adminSettingsSubmenu');
+settingsToggle.onclick=event=>{event.stopPropagation();settingsSubmenu.hidden=!settingsSubmenu.hidden;settingsToggle.setAttribute('aria-expanded',String(!settingsSubmenu.hidden))};
+settingsSubmenu.querySelectorAll('[data-admin-page]').forEach(button=>button.onclick=()=>{
+ const page=button.dataset.adminPage;
+ showAdminPage(page);
+ if(page==='accounts')renderAccounts();
+ if(page==='promo')renderPromos();
+ if(page==='passwordResetRequests')renderPasswordResetRequests();
+ if(page==='content')renderCustomContent(window.ERAAPPS_CUSTOM_CONTENT||[],true);
+});
+document.addEventListener('click',event=>{if(!settingsMenu.contains(event.target)){settingsSubmenu.hidden=true;settingsToggle.setAttribute('aria-expanded','false')}});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){settingsSubmenu.hidden=true;settingsToggle.setAttribute('aria-expanded','false')}});
+function updateRolePreviewAccounts(){
+ const role=$('rolePreviewSelect').value,select=$('rolePreviewAccount'),previous=select.value;
+ const examples=accounts.filter(account=>account.userType===role);
+ select.innerHTML='<option value="">Contoh role</option>'+examples.map(account=>`<option value="${esc(account.id)}">${esc(account.name||account.username)} · ${esc(account.username)}</option>`).join('');
+ if(examples.some(account=>account.id===previous))select.value=previous;
+ renderRolePreview();
+}
+function renderRolePreview(){
+ const type=$('rolePreviewSelect').value,account=accounts.find(item=>item.id===$('rolePreviewAccount').value)||null;
+ const scope=account||{userType:type,lob:'',tsh:'',storeCode:'',storeName:'',name:'Contoh '+type,username:'role-preview'};
+ const inScope=item=>type==='LOB'?item.lob?.toLowerCase()===scope.lob?.toLowerCase()
+  :type==='TSH'?item.lob?.toLowerCase()===scope.lob?.toLowerCase()&&item.tsh?.toLowerCase()===scope.tsh?.toLowerCase()
+  :type==='Store Leader'?item.lob?.toLowerCase()===scope.lob?.toLowerCase()&&item.tsh?.toLowerCase()===scope.tsh?.toLowerCase()&&item.storeCode?.toUpperCase()===scope.storeCode?.toUpperCase()&&(!item.storeLeaderId||item.storeLeaderId===account?.id)
+  :item.id===account?.id;
+ const memberTypes=type==='LOB'?['TSH','Store Leader','ERO','Promotor']:type==='TSH'?['Store Leader','ERO','Promotor']:type==='Store Leader'?['ERO','Promotor']:[];
+ const members=accounts.filter(item=>memberTypes.includes(item.userType)&&inScope(item));
+ const approvals=type==='LOB'?['TSH']:type==='TSH'?['Store Leader']:type==='Store Leader'?['ERO','Promotor']:[];
+ const modules=['Dashboard','Promo / Informasi','Menu tambahan',...(type==='LOB'?[]:['Absensi']),...(approvals.length?['Approval akun']:[])];
+ const customItems=(window.ERAAPPS_CUSTOM_CONTENT||[]).filter(item=>item.targetRoles?.includes(type));
+ const promoVisible=item=>item.scopeType==='global'
+  ||(type==='LOB'&&item.scopeType==='lob'&&item.scopeValue?.toLowerCase()===scope.lob?.toLowerCase())
+  ||(type==='TSH'&&item.scopeType==='tsh'&&item.scopeValue?.toLowerCase()===`${scope.lob}|${scope.tsh}`.toLowerCase())
+  ||(['Store Leader','ERO','Promotor'].includes(type)&&item.scopeType==='store'&&item.scopeValue?.toLowerCase()===`${scope.lob}|${scope.tsh}|${scope.storeCode}`.toLowerCase());
+ const visiblePromos=promos.filter(promoVisible),highlightCount=visiblePromos.filter(item=>(item.isHighlight||isHighlightFolder(item.folder))&&item.image).length;
+ const scopeText=[scope.lob&&`LOB ${scope.lob}`,scope.tsh&&`TSH ${scope.tsh}`,scope.storeName&&`${scope.storeName} (${scope.storeCode})`].filter(Boolean).join(' · ')||'Pilih akun contoh untuk melihat scope';
+ $('rolePreviewBody').innerHTML=`<div class="role-preview-topline"><strong>${esc(scope.name||scope.username)} · ${esc(type)}</strong><span>${esc(scopeText)}</span></div><nav class="role-preview-nav" aria-label="Navigasi preview">${modules.map(item=>`<span>${esc(item)}</span>`).join('')}</nav><div class="role-preview-columns"><section class="role-preview-section"><h3>Anggota dalam lingkup</h3>${members.length?members.map(item=>`<p>${esc(item.name||item.username)} · ${esc(item.userType)} · ${esc(item.storeName||item.lob||item.tsh||'')}</p>`).join(''):'<p>Belum ada anggota pada scope contoh ini.</p>'}</section><section class="role-preview-section"><h3>Highlight</h3><p>${highlightCount} gambar tersedia · hanya tampil, tanpa unduh untuk user.</p><h3>Promo / Informasi</h3><p>${visiblePromos.length} item tersedia · ${type==='Promotor'?'tanpa unduh':'unduh promo tersedia'}.</p></section><section class="role-preview-section"><h3>Approval akun</h3><p>${approvals.length?`Dapat menyetujui: ${esc(approvals.join(', '))}`:'Tidak tersedia untuk role ini.'}</p><h3>Informasi</h3><p>${type==='LOB'?'Editor informasi tersedia.':'Tidak ada editor informasi.'}</p></section><section class="role-preview-section"><h3>Menu tambahan</h3><p>${customItems.length} item tersedia untuk role ini.</p></section></div>`;
+}
+const rolePreviewButton=document.createElement('button');rolePreviewButton.id='rolePreviewButton';rolePreviewButton.className='admin-only';rolePreviewButton.type='button';rolePreviewButton.innerHTML='<span aria-hidden="true">◉</span> <span>Preview</span>';rolePreviewButton.setAttribute('aria-label','Preview tampilan role');rolePreviewButton.hidden=true;document.body.appendChild(rolePreviewButton);
+rolePreviewButton.onclick=()=>{if(currentUser?.role!=='admin')return;updateRolePreviewAccounts();$('rolePreviewDialog').showModal()};
+$('rolePreviewSelect').addEventListener('change',updateRolePreviewAccounts);
+$('rolePreviewAccount').addEventListener('change',renderRolePreview);
+$('closeRolePreview').onclick=()=>$('rolePreviewDialog').close();
+$('rolePreviewDialog').addEventListener('click',event=>{if(event.target===$('rolePreviewDialog'))$('rolePreviewDialog').close()});
 updatePasswordResetBadge();renderPasswordResetRequests();
 window.addEventListener('storage',event=>{
  if(event.key===RESETKEY){try{passwordResetRequests=event.newValue?JSON.parse(event.newValue):[]}catch(error){passwordResetRequests=[]}updatePasswordResetBadge();if(currentUser?.role==='admin')renderPasswordResetRequests()}
