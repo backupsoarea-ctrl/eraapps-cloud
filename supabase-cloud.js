@@ -483,7 +483,7 @@
     stopEvent(event);
     const code = $('staffCode').value.trim().toUpperCase(), name = $('staffName').value.trim();
     const nik = $('staffNik').value.trim();
-    if (!code || !name || !/^\d{16}$/.test(nik) || staff.length >= 30 || staff.some(person => person.code === code || person.nik === nik)) return showError(new Error('Kode harus unik, NIK harus 16 digit dan unik, serta maksimal 30 karyawan.'));
+    if (!code || !name || !nik || staff.length >= 30 || staff.some(person => person.code === code || person.nik === nik)) return showError(new Error('Kode, NIK karyawan, dan nama wajib diisi; kode serta NIK harus unik dan maksimal 30 karyawan.'));
     try { check(await client.from('staff').insert({ code, nik, name })); $('staffForm').reset(); await loadCloudData(); }
     catch (error) { showError(error); }
   }, true);
@@ -494,8 +494,8 @@
     status.textContent = '';
     status.className = 'mini';
     const userType = $('newUserType').value;
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6) {
-      status.textContent = 'Periksa username (3-40 karakter) dan password (minimal 6 karakter).';
+    if (!username || password.length < 6) {
+      status.textContent = 'Username wajib diisi dan password minimal 6 karakter.';
       status.className = 'login-error';
       return;
     }
@@ -523,8 +523,8 @@
     const status = form.querySelector('[role="status"]');
     status.textContent = '';
     status.className = 'mini';
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || !/^\d{16}$/.test(nik)) {
-      status.textContent = 'Username harus 3-40 karakter, password minimal 6 karakter, dan NIK harus 16 digit.';
+    if (!username || password.length < 6 || !nik) {
+      status.textContent = 'Username, NIK karyawan, dan password wajib diisi; password minimal 6 karakter.';
       status.className = 'login-error';
       return;
     }
@@ -919,11 +919,11 @@
     const nik = (row.querySelector('[data-nik]')?.value || '').trim();
     const name = (row.querySelector('[data-name]')?.value || '').trim();
     const existingStaff = staff.find(person => person.code === oldCode);
-    const validNik = /^\d{16}$/.test(nik) || (!nik && existingStaff?.nik === '');
+    const validNik = Boolean(nik) || (!nik && existingStaff?.nik === '');
     if (!code || !name || !validNik
       || staff.some(person => person.code === code && person.code !== oldCode)
       || (nik && staff.some(person => person.nik === nik && person.code !== oldCode))) {
-      return showError(new Error('Kode internal harus unik; NIK yang diisi wajib 16 digit dan unik; nama wajib diisi.'));
+      return showError(new Error('Kode internal dan NIK karyawan harus unik; nama wajib diisi.'));
     }
     if (code !== oldCode && logs.some(item => item.code === oldCode)) return showError(new Error('Kode tidak dapat diubah setelah memiliki riwayat online. Ubah nama saja atau tambahkan karyawan baru.'));
     try { check(await client.from('staff').update({ code, nik, name }).eq('code', oldCode)); await loadCloudData(); }

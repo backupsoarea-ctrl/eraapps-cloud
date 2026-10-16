@@ -33,8 +33,8 @@ Deno.serve(async (request) => {
     const employees = Array.isArray(body.employees) ? body.employees : [];
     const allowedUserTypes = ['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'];
     const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.endsWith('@eraapps.invalid') || password.length < 6 || !/^\d{16}$/.test(nik) || !fullName.trim() || (!needsEmployeeCodes && employees.length > 0) || !allowedUserTypes.includes(userType)) {
-      return jsonResponse({ error: 'Username, email aktif, nama, NIK, password, role pengguna, atau data karyawan tidak valid.' }, 400);
+    if (!username || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6 || !nik || !fullName.trim() || (!needsEmployeeCodes && employees.length > 0) || !allowedUserTypes.includes(userType)) {
+      return jsonResponse({ error: 'Username, format email, nama, NIK karyawan, password, atau role pengguna tidak valid.' }, 400);
     }
     const { data: existingProfile, error: existingProfileError } = await admin
       .from('profiles').select('id').eq('nik', nik).limit(1).maybeSingle();
@@ -42,7 +42,7 @@ Deno.serve(async (request) => {
     if (existingProfile) return jsonResponse({ error: 'NIK akun sudah terdaftar.' }, 409);
     const selfStaff = needsEmployeeCodes && employees.length === 0;
     const employeeRecords = employees.length ? employees : needsEmployeeCodes
-      ? [{ code: `NIK-${nik}`, nik, name: fullName }]
+      ? [{ code: `E${crypto.randomUUID().replaceAll('-', '').slice(0, 31).toUpperCase()}`, nik, name: fullName }]
       : [];
     const employeeCodes = employeeRecords.map((employee: { code?: string }) => String(employee.code || '').trim().toUpperCase());
     const employeeNiks = employeeRecords.map((employee: { nik?: string }) => String(employee.nik || '').trim());
@@ -53,9 +53,9 @@ Deno.serve(async (request) => {
       || new Set(employeeNiks).size !== employeeNiks.length
       || employeeRecords.some((employee: { code?: string; name?: string; nik?: string }) =>
         !/^[A-Z0-9_-]{1,32}$/.test(String(employee.code || '').trim().toUpperCase())
-        || !/^\d{16}$/.test(String(employee.nik || '').trim())
+        || !String(employee.nik || '').trim()
         || !String(employee.name || '').trim())) {
-      return jsonResponse({ error: 'Kode internal harus unik; setiap NIK karyawan wajib 16 digit dan unik; nama karyawan wajib diisi.' }, 400);
+      return jsonResponse({ error: 'Kode internal harus unik; NIK karyawan dan nama wajib diisi.' }, 400);
     }
     if (employeeCodes.length) {
       const [{ data: existingStaff, error: existingStaffError }, { data: existingNiks, error: existingNiksError }] = await Promise.all([

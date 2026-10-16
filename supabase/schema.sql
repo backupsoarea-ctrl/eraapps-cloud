@@ -101,15 +101,9 @@ begin
     alter table public.staff add constraint staff_scope_segments_check
       check (position('|' in lob) = 0 and position('|' in tsh) = 0 and position('|' in store_code) = 0);
   end if;
-  if not exists (
-    select 1 from pg_constraint
-    where conrelid = 'public.staff'::regclass and conname = 'staff_nik_format_check'
-  ) then
-    alter table public.staff add constraint staff_nik_format_check
-      check (nik = '' or nik ~ '^[0-9]{16}$');
-  end if;
 end;
 $$;
+alter table public.staff drop constraint if exists staff_nik_format_check;
 
 create table if not exists public.staff_access (
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -603,8 +597,8 @@ declare
   attempts integer;
   normalized_username text := lower(trim(target_username));
 begin
-  if normalized_username !~ '^[a-z0-9._-]{3,40}$' then
-    raise exception 'Username tidak valid.';
+  if normalized_username = '' then
+    raise exception 'Username tidak boleh kosong.';
   end if;
   insert into public.login_attempts (username, failed_attempts, locked_at)
   values (normalized_username, 1, null)
@@ -652,8 +646,8 @@ declare
   profile_type text := coalesce(metadata ->> 'user_type', 'ERO');
   profile_status text := 'pending';
 begin
-  if profile_username !~ '^[a-z0-9._-]{3,40}$' then
-    raise exception 'Username harus berisi 3-40 karakter huruf kecil, angka, titik, garis bawah, atau tanda hubung.';
+  if profile_username = '' then
+    raise exception 'Username tidak boleh kosong.';
   end if;
   if profile_type not in ('LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor') then
     profile_type := 'ERO';

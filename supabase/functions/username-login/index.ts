@@ -22,11 +22,15 @@ Deno.serve(async request => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-    const profileQuery = admin.from('profiles').select('id,username,email,role,account_status,account_status_reason,user_type,must_change_password,password_changed_at,created_at');
-    const { data: profile, error: profileError } = await (identifier.includes('@')
-      ? profileQuery.eq('email', identifier)
-      : profileQuery.eq('username', identifier)).maybeSingle();
-    if (profileError) throw profileError;
+    const profileFields = 'id,username,email,role,account_status,account_status_reason,user_type,must_change_password,password_changed_at,created_at';
+    const usernameResult = await admin.from('profiles').select(profileFields).eq('username', identifier).maybeSingle();
+    if (usernameResult.error) throw usernameResult.error;
+    let profile = usernameResult.data;
+    if (!profile && identifier.includes('@')) {
+      const emailResult = await admin.from('profiles').select(profileFields).eq('email', identifier).maybeSingle();
+      if (emailResult.error) throw emailResult.error;
+      profile = emailResult.data;
+    }
     if (!profile?.email) return jsonResponse({ error: 'Username atau password tidak sesuai.' }, 401);
 
     if (profile.role !== 'admin') {
