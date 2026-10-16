@@ -333,7 +333,7 @@
     }
     if (role === 'user') {
       $('attendancePanel').querySelector('h2').textContent = `${type} · Absensi Saya`;
-      showUserPage(type === 'LOB' ? 'dashboard' : 'attendance');
+      showUserPage('dashboard');
     }
   };
 
