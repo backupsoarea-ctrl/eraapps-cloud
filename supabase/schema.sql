@@ -15,6 +15,7 @@ create table if not exists public.profiles (
   tsh text not null default '',
   store_code text not null default '',
   store_name text not null default '',
+  store_leader_id uuid references public.profiles(id) on delete set null,
   must_change_password boolean not null default false,
   account_status text not null default 'approved',
   approved_by uuid references public.profiles(id),
@@ -31,6 +32,7 @@ alter table public.profiles
   add column if not exists user_type text not null default 'ERO',
   add column if not exists nik text not null default '',
   add column if not exists organization text not null default '',
+  add column if not exists store_leader_id uuid references public.profiles(id) on delete set null,
   add column if not exists account_status text not null default 'approved',
   add column if not exists approved_by uuid references public.profiles(id),
   add column if not exists approved_at timestamptz,
@@ -322,6 +324,7 @@ as $$
       actor.lob <> '' and actor.tsh <> '' and actor.store_code <> ''
       and lower(actor.lob) = lower(target.lob) and lower(actor.tsh) = lower(target.tsh)
       and upper(actor.store_code) = upper(target.store_code)
+      and (target.store_leader_id is null or target.store_leader_id = actor.id)
       and target.user_type in ('ERO', 'Promotor')
     else false
   end
@@ -419,6 +422,7 @@ as $$
       and actor.lob <> '' and actor.tsh <> '' and actor.store_code <> ''
       and lower(actor.lob) = lower(target.lob) and lower(actor.tsh) = lower(target.tsh)
       and upper(actor.store_code) = upper(target.store_code)
+      and (target.store_leader_id is null or target.store_leader_id = actor.id)
     else false
   end
   from public.profiles actor

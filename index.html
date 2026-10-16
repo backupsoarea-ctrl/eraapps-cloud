@@ -94,7 +94,7 @@ td small{color:var(--muted)}
 .mini{font-size:12px;color:var(--muted);line-height:1.55}
 .staffrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:9px;margin-bottom:9px;align-items:center}
 .staffrow input{width:100%;min-width:0}
-.employee-account-row,#staffForm .staffrow,.stafflist .staffrow{grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+#staffForm .staffrow,.stafflist .staffrow{grid-template-columns:repeat(3,minmax(0,1fr)) auto}
 .stafflist{max-height:300px;overflow:auto;padding-right:2px}
 .stafflist .staffrow{padding:8px;background:#f8fafc;border:1px solid #e8eef4;border-radius:11px}
 .reasonbox{width:100%;min-height:86px;resize:vertical;margin-top:7px}
@@ -119,7 +119,6 @@ td small{color:var(--muted)}
 .settings-grid textarea{width:100%;margin-top:6px}
 #accountForm,#adminPasswordForm,#promoForm{background:#f9fbfd;border:1px solid #e5ecf3;border-radius:13px;padding:16px}
 .registration-card{max-height:calc(100vh - 32px);overflow:auto}
-#newEmployeeRows{margin-top:10px}
 #accountList .person{background:#fff;border-color:#e2eaf2}
 #accountList .person>div{font-size:12px;color:#61768b;margin:5px 0 10px;overflow-wrap:anywhere}
 #downloadAccountTemplate{border-style:dashed}
@@ -269,23 +268,48 @@ td small{color:var(--muted)}
  <div id="userHistory"></div>
 </div></div>
 <div id="accountsPanel" class="panel section admin-only" hidden><h2>Akun & Pendaftaran</h2><div class="pad">
- <h3>Buat akun pengguna</h3>
+ <h3>Buat akun LOB, TSH, atau Store Leader</h3>
  <form id="accountForm"><div class="settings-grid">
-  <label>Nama pengguna<input id="newFullName" required placeholder="Nama lengkap"></label>
+  <label>Nama lengkap<input id="newFullName" required placeholder="Nama lengkap"></label>
   <label>Username<input id="newUsername" required placeholder="contoh: ciputat01"></label>
   <label>Email aktif<input id="newEmail" type="email" autocomplete="email" required placeholder="nama@contoh.com"></label>
   <label>Password awal<input id="newPassword" required minlength="6" placeholder="Minimal 6 karakter"></label>
-  <label>Role pengguna<select id="newUserType"><option value="ERO">ERO</option><option value="Promotor">Promotor</option><option value="Store Leader">Store Leader</option><option value="TSH">TSH</option><option value="LOB">LOB</option></select></label>
+  <label>Role pengguna<select id="newUserType"><option value="LOB">LOB</option><option value="TSH">TSH</option><option value="Store Leader">Store Leader</option></select></label>
   <label>Organisasi/perusahaan<input id="newOrganization" placeholder="Nama organisasi"></label>
   <label>NIK (16 digit)<input id="newNik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required autocomplete="off" placeholder="NIK 16 digit"></label>
   <label>LOB<input id="newLob" placeholder="contoh: LOB Retail"></label>
   <label>TSH<input id="newTsh" placeholder="contoh: TSH Ciputat"></label>
   <label>Kode Toko<input id="newStoreCode" placeholder="contoh: TSH001"></label>
   <label>Nama toko<input id="newStore" placeholder="Nama toko"></label>
- </div><h4>Karyawan yang terhubung ke akun ini</h4> <div id="newEmployeeRows"><div class="staffrow employee-account-row"><input class="employee-code" placeholder="Kode internal, mis. EA006"><input class="employee-nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" placeholder="NIK karyawan"><input class="employee-name" placeholder="Nama karyawan"><span></span></div></div>
- <div class="actions"><button type="button" class="secondary" id="addAccountEmployee">+ Tambah Karyawan</button><button type="submit">Buat Akun</button></div><div id="accountFormStatus" class="mini" role="status"></div></form>
+ </div><div class="actions"><button type="submit">Buat Akun</button></div><div id="accountFormStatus" class="mini" role="status"></div></form>
+ <hr><h3>Daftarkan ERO</h3>
+ <form id="eroAccountForm" class="staff-account-form" data-user-type="ERO"><div class="settings-grid">
+  <label>NIK (16 digit)<input name="nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required autocomplete="off"></label>
+  <label>Nama lengkap<input name="fullName" required autocomplete="name"></label>
+  <label>Email aktif<input name="email" type="email" autocomplete="email" required></label>
+  <label>Kode Toko<input name="storeCode" required></label>
+  <label>Nama toko<input name="storeName" required></label>
+  <label>Store Leader<select name="storeLeaderId" required><option value="">Pilih Store Leader</option></select></label>
+  <label>TSH<input name="tsh" required></label>
+  <label>LOB<input name="lob" required></label>
+  <label>Username<input name="username" required autocomplete="username"></label>
+  <label>Password awal<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+ </div><div class="actions"><button type="submit">Buat Akun ERO</button></div><div class="mini" role="status"></div></form>
+ <hr><h3>Daftarkan Promotor</h3>
+ <form id="promotorAccountForm" class="staff-account-form" data-user-type="Promotor"><div class="settings-grid">
+  <label>NIK (16 digit)<input name="nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required autocomplete="off"></label>
+  <label>Nama lengkap<input name="fullName" required autocomplete="name"></label>
+  <label>Email aktif<input name="email" type="email" autocomplete="email" required></label>
+  <label>Kode Toko<input name="storeCode" required></label>
+  <label>Nama toko<input name="storeName" required></label>
+  <label>Store Leader<select name="storeLeaderId" required><option value="">Pilih Store Leader</option></select></label>
+  <label>TSH<input name="tsh" required></label>
+  <label>LOB<input name="lob" required></label>
+  <label>Username<input name="username" required autocomplete="username"></label>
+  <label>Password awal<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
+ </div><div class="actions"><button type="submit">Buat Akun Promotor</button></div><div class="mini" role="status"></div></form>
  <hr><h3>Impor massal dari template Excel</h3>
- <p class="mini">Unduh template .xlsx, isi satu baris per akun. Email aktif diperlukan untuk pemulihan password. Untuk ERO/Promotor dengan beberapa karyawan, ulangi username dan data akun pada tiap baris lalu isi kode/nama karyawan. Role: LOB, TSH, Store Leader, ERO, Promotor. Akun yang dibuat admin langsung aktif; password pada template menjadi password awal.</p>
+ <p class="mini">Unduh template .xlsx, isi satu baris per akun. Untuk ERO/Promotor, NIK dan nama akun otomatis menjadi data staf sehingga tidak perlu kolom NIK/nama staf terpisah. Akun menerima password awal yang wajib diganti saat login pertama.</p>
  <div class="actions"><button type="button" class="secondary" id="downloadAccountTemplate">Download template Excel (.xlsx)</button><label class="secondary" style="padding:10px 12px;border-radius:9px;cursor:pointer">Upload template <input id="accountExcelFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></label><button type="button" id="saveAccountImport" disabled>Buat semua akun</button></div><div id="importAccountStatus" class="mini" role="status"></div>
  <div id="accountList" class="stafflist"></div>
 </div></div>
@@ -568,7 +592,9 @@ function renderRoleDashboard(){
  members.forEach(account=>{const key=account.userType||'ERO';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(account)});
  $('roleMemberList').innerHTML=groups.size?[...groups].map(([group,items])=>`<section class="person"><b>${esc(group)} (${items.length})</b><div>${items.map(item=>`${esc(item.name||item.username)} · ${esc(item.storeName||item.lob||item.tsh||'Belum dipetakan')}`).join('<br>')}</div></section>`).join(''):'<div class="empty">Belum ada anggota yang disetujui atau berada dalam lingkup ini.</div>';
  const approvalTypes=type==='LOB'?['TSH']:type==='TSH'?['Store Leader']:type==='Store Leader'?['ERO','Promotor']:[];
- const pending=members.filter(item=>item.accountStatus==='pending'&&approvalTypes.includes(item.userType));
+ const pending=members.filter(item=>item.accountStatus==='pending'
+  &&approvalTypes.includes(item.userType)
+  &&(type!=='Store Leader'||!item.storeLeaderId||item.storeLeaderId===profile.id));
  $('pendingAccountsTitle').hidden=!approvalTypes.length;
  $('approvalCount').textContent=String(pending.length);
  $('pendingAccountsList').innerHTML=pending.map(item=>{
@@ -659,35 +685,26 @@ function renderUserHistory(){
  const own=logs.filter(x=>x.code===code&&x.date.slice(0,7)===month).sort((a,b)=>b.ts-a.ts);
  $('userHistory').innerHTML=own.length?own.map(x=>`<div class="promo-card"><b>${esc(x.action)}</b><div>${esc(x.date)} · ${esc(x.time)}</div><div class="mini">Bulan: ${esc(x.date.slice(5,7))} · Tahun: ${esc(x.date.slice(0,4))}</div><div>Alasan: ${esc(x.detail||'—')}</div>${x.photo?`<img src="${x.photo}" alt="Foto absensi">`:'<div class="mini">Foto tidak tersedia pada catatan lama.</div>'}</div>`).join(''):'<div class="empty">Belum ada riwayat absensi pada bulan ini.</div>';
 }
-$('addAccountEmployee').onclick=()=>{const row=document.createElement('div');row.className='staffrow employee-account-row';row.innerHTML='<input class="employee-code" required placeholder="Kode internal, mis. EA007"><input class="employee-nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" placeholder="NIK karyawan"><input class="employee-name" required placeholder="Nama karyawan"><button type="button" class="red small-btn remove-employee-row">Hapus</button>';row.querySelector('button').onclick=()=>row.remove();$('newEmployeeRows').appendChild(row)};
 $('accountForm').onsubmit=e=>{
- e.preventDefault();$('accountFormStatus').textContent='Pembuatan akun harus tersambung ke Supabase.';return;
- const username=$('newUsername').value.trim(),password=$('newPassword').value,store=$('newStore').value.trim(),lob=$('newLob').value.trim(),tsh=$('newTsh').value.trim(),storeCode=$('newStoreCode').value.trim().toUpperCase();
- const employees=[...document.querySelectorAll('.employee-account-row')].map(r=>({code:r.querySelector('.employee-code').value.trim().toUpperCase(),name:r.querySelector('.employee-name').value.trim()}));
- if(accounts.some(a=>a.username.toLowerCase()===username.toLowerCase())){alert('Username sudah digunakan.');return}
- if(new Set(employees.map(x=>x.code)).size!==employees.length||employees.some(x=>staff.some(y=>y.code===x.code))){alert('Kode barcode karyawan harus unik dan belum digunakan.');return}
- if(staff.length+employees.length>30){alert('Maksimal 30 karyawan.');return}
- employees.forEach(x=>staff.push({...x,store,storeName:store,lob,tsh,storeCode}));
- accounts.push({username,password,defaultPassword:password,mustChangePassword:true,passwordChangedAt:null,store,storeName:store,lob,tsh,storeCode,name:employees.map(x=>x.name).join(', '),code:employees[0].code,staffCodes:employees.map(x=>x.code)});
- save();storeAccounts();e.target.reset();$('newStore').value='M.H.A WEB';$('newLob').value='';$('newTsh').value='';$('newStoreCode').value='';$('newEmployeeRows').innerHTML='<div class="staffrow employee-account-row"><input class="employee-code" required placeholder="Kode barcode, mis. EA006"><input class="employee-name" required placeholder="Nama karyawan"><span></span></div>';alert('Akun user dan karyawan berhasil dibuat. Akun dapat langsung digunakan pada halaman login.');
+ e.preventDefault();$('accountFormStatus').textContent='Pembuatan akun harus tersambung ke Supabase.';
 };
 let pendingAccountImport=[];
 $('downloadAccountTemplate').onclick=()=>{
  if(!window.XLSX){$('importAccountStatus').textContent='Template Excel belum dapat dibuat karena library Excel tidak tersedia.';return}
- const headers=['username','email','password','user_type','full_name','nik','organization','lob','tsh','store_code','store_name','staff_code','staff_nik','staff_name'];
+ const headers=['username','email','password','user_type','full_name','nik','organization','lob','tsh','store_code','store_name','store_leader'];
  const accountsSheet=XLSX.utils.aoa_to_sheet([headers]);
  accountsSheet['!cols']=headers.map(header=>({wch:Math.max(16,header.length+3)}));
  const instructions=[
   ['Petunjuk pengisian template akun EraApps'],
-  ['Isi sheet Akun. Hapus baris contoh bila ada; baris pertama adalah header dan jangan diubah.'],
+  ['Isi satu baris untuk setiap akun di sheet Akun. Hapus baris contoh bila ada; baris pertama adalah header dan jangan diubah.'],
   ['Role yang didukung: LOB, TSH, Store Leader, ERO, Promotor.'],
-  ['Semua akun wajib diisi username, email aktif, password, user_type, full_name, NIK, organization, dan lob.'],
-  ['Simpan NIK dan staff_nik sebagai teks (bukan angka) agar 16 digit dan angka nol di awal tidak berubah.'],
+  ['Semua akun wajib diisi username, email aktif, password, user_type, full_name, NIK, dan lob. Isi organization untuk LOB/TSH/Store Leader; akun ERO/Promotor memakai LOB sebagai organisasi.'],
+  ['Simpan NIK sebagai teks (bukan angka) agar 16 digit dan angka nol di awal tidak berubah.'],
   ['TSH wajib mengisi tsh. Store Leader, ERO, dan Promotor wajib mengisi tsh, store_code, dan store_name.'],
-  ['ERO dan Promotor wajib mengisi staff_code (kode relasi lama), staff_nik (NIK 16 digit unik), dan staff_name. Jika satu akun terkait beberapa karyawan, ulangi data akun pada baris berikutnya dan isi identitas karyawan yang berbeda.'],
-  ['LOB, TSH, dan Store Leader cukup satu baris per akun; staff_code, staff_nik, dan staff_name dikosongkan.'],
+  ['ERO dan Promotor wajib mengisi store_leader dengan username akun Store Leader aktif pada toko, TSH, dan LOB yang sama. NIK dan nama akun otomatis menjadi data staf; tidak ada kolom staf terpisah.'],
+  ['LOB, TSH, dan Store Leader cukup satu baris per akun; kolom store_leader dikosongkan.'],
   ['Password pada file menjadi password awal akun. Simpan file ini dengan aman dan bagikan kredensial secara terpisah kepada pemilik akun.'],
-  ['Username, kode relasi lama, dan NIK karyawan harus unik. Barcode baru dicetak menggunakan staff_nik setelah semua data karyawan dipetakan.'],
+  ['Username dan NIK akun harus unik. Barcode staf baru menggunakan NIK akun.'],
  ];
  const workbook=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(workbook,accountsSheet,'Akun');
@@ -701,14 +718,14 @@ $('accountExcelFile').onchange=async e=>{
   const workbook=XLSX.read(await file.arrayBuffer(),{type:'array'});
   let rows=XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]],{header:1,defval:''});
   rows=rows.filter(row=>row.some(value=>String(value??'').trim()));
-  const norm=x=>String(x??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');const head=(rows.shift()||[]).map(norm),column=(...names)=>head.findIndex(value=>names.includes(value));const ix={username:column('username'),email:column('email','email aktif'),password:column('password'),userType:column('user type','role','tipe akun'),fullName:column('full name','nama pengguna','nama lengkap'),nik:column('nik'),organization:column('organization','organisasi','perusahaan'),lob:column('lob'),tsh:column('tsh'),storeCode:column('store code','kode toko'),storeName:column('store name','nama toko'),code:column('staff code','kode karyawan','employee code','code'),staffNik:column('staff nik','nik karyawan'),name:column('staff name','nama karyawan','employee name','name')};
-  if([ix.username,ix.email,ix.password,ix.userType,ix.fullName,ix.nik,ix.organization,ix.lob,ix.tsh,ix.storeCode,ix.storeName,ix.code,ix.staffNik,ix.name].some(index=>index<0))throw new Error('Header template tidak cocok. Unduh template Excel EraApps terbaru.');
-  const parsed=rows.filter(r=>r.some(v=>String(v??'').trim())).map(r=>({username:String(r[ix.username]??'').trim().toLowerCase(),email:String(r[ix.email]??'').trim().toLowerCase(),password:String(r[ix.password]??''),userType:String(r[ix.userType]??'').trim(),fullName:String(r[ix.fullName]??'').trim(),nik:String(r[ix.nik]??'').trim(),nikIsText:typeof r[ix.nik]==='string',organization:String(r[ix.organization]??'').trim(),lob:String(r[ix.lob]??'').trim(),tsh:String(r[ix.tsh]??'').trim(),storeCode:String(r[ix.storeCode]??'').trim().toUpperCase(),storeName:String(r[ix.storeName]??'').trim(),code:String(r[ix.code]??'').trim().toUpperCase(),staffNik:String(r[ix.staffNik]??'').trim(),staffNikIsText:typeof r[ix.staffNik]==='string',name:String(r[ix.name]??'').trim()}));
+  const norm=x=>String(x??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');const head=(rows.shift()||[]).map(norm),column=(...names)=>head.findIndex(value=>names.includes(value));const ix={username:column('username'),email:column('email','email aktif'),password:column('password'),userType:column('user type','role','tipe akun'),fullName:column('full name','nama pengguna','nama lengkap'),nik:column('nik'),organization:column('organization','organisasi','perusahaan'),lob:column('lob'),tsh:column('tsh'),storeCode:column('store code','kode toko'),storeName:column('store name','nama toko'),storeLeader:column('store leader','store leader username')};
+  if([ix.username,ix.email,ix.password,ix.userType,ix.fullName,ix.nik,ix.organization,ix.lob,ix.tsh,ix.storeCode,ix.storeName].some(index=>index<0))throw new Error('Header template tidak cocok. Unduh template akun terbaru.');
+  const parsed=rows.filter(r=>r.some(v=>String(v??'').trim())).map(r=>({username:String(r[ix.username]??'').trim().toLowerCase(),email:String(r[ix.email]??'').trim().toLowerCase(),password:String(r[ix.password]??''),userType:String(r[ix.userType]??'').trim(),fullName:String(r[ix.fullName]??'').trim(),nik:String(r[ix.nik]??'').trim(),nikIsText:typeof r[ix.nik]==='string',organization:String(r[ix.organization]??'').trim(),lob:String(r[ix.lob]??'').trim(),tsh:String(r[ix.tsh]??'').trim(),storeCode:String(r[ix.storeCode]??'').trim().toUpperCase(),storeName:String(r[ix.storeName]??'').trim(),storeLeader:String(ix.storeLeader<0?'':r[ix.storeLeader]??'').trim().toLowerCase()}));
   if(!parsed.length)throw new Error('Tidak ada baris data.');
   const userTypes=['LOB','TSH','Store Leader','ERO','Promotor'];
-  if(parsed.some(x=>!/^[a-z0-9._-]{3,40}$/.test(x.username)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email)||x.password.length<6||!x.userType||!userTypes.includes(x.userType)||!x.fullName||!x.nikIsText||!/^\d{16}$/.test(x.nik)||!x.organization||!x.lob))throw new Error('Periksa username, email aktif, password, role, nama, organisasi, dan LOB. NIK akun harus teks 16 digit.');
+  if(parsed.some(x=>!/^[a-z0-9._-]{3,40}$/.test(x.username)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.email)||x.password.length<6||!x.userType||!userTypes.includes(x.userType)||!x.fullName||!x.nikIsText||!/^\d{16}$/.test(x.nik)||(!['ERO','Promotor'].includes(x.userType)&&!x.organization)||!x.lob))throw new Error('Periksa username, email aktif, password, role, nama, organisasi untuk role LOB/TSH/Store Leader, dan LOB. NIK akun harus teks 16 digit.');
   if(parsed.some(x=>(x.userType==='TSH'&&!x.tsh)||(['Store Leader','ERO','Promotor'].includes(x.userType)&&(!x.tsh||!x.storeCode||!x.storeName))))throw new Error('Data TSH dan toko wajib diisi sesuai role.');
-  if(parsed.some(x=>(x.code&&(!x.name||!x.staffNik))||(!x.code&&(x.name||x.staffNik))||(['ERO','Promotor'].includes(x.userType)&&(!x.code||!x.name||!x.staffNikIsText||!/^\d{16}$/.test(x.staffNik)))||(!['ERO','Promotor'].includes(x.userType)&&(x.code||x.staffNik||x.name))))throw new Error('ERO/Promotor wajib memiliki kode relasi lama, staff_nik berupa teks 16 digit, dan nama. Role LOB/TSH/Store Leader tidak memakai data karyawan.');
+  if(parsed.some(x=>['ERO','Promotor'].includes(x.userType)&&!x.storeLeader))throw new Error('ERO/Promotor wajib mengisi username Store Leader.');
   const grouped=new Map();
   parsed.forEach(item=>{const key=item.username;if(!grouped.has(key))grouped.set(key,[]);grouped.get(key).push(item)});
   const groupedEmails=[...grouped.values()].map(items=>items[0].email);
@@ -717,13 +734,15 @@ $('accountExcelFile').onchange=async e=>{
   if(new Set(accountNiks).size!==accountNiks.length||accountNiks.some(nik=>accounts.some(account=>account.nik===nik)))throw new Error('NIK akun sudah terdaftar atau berulang pada akun yang berbeda.');
   for(const [username,items] of grouped){
    if(accounts.some(a=>a.username.toLowerCase()===username))throw new Error(`Username ${username} sudah terdaftar.`);
-   const first=items[0],sameAccount=items.every(item=>['email','password','userType','fullName','nik','organization','lob','tsh','storeCode','storeName'].every(key=>item[key]===first[key]));
+  const first=items[0],sameAccount=items.every(item=>['email','password','userType','fullName','nik','organization','lob','tsh','storeCode','storeName','storeLeader'].every(key=>item[key]===first[key]));
    if(!sameAccount)throw new Error(`Data akun ${username} harus sama pada setiap baris karyawan.`);
-   if(items.length>1&&!['ERO','Promotor'].includes(first.userType))throw new Error(`Username ${username} hanya boleh muncul satu kali untuk role ${first.userType}.`);
+  if(items.length>1)throw new Error(`Username ${username} hanya boleh muncul satu kali. Setiap ERO/Promotor adalah satu akun dan satu staf.`);
+  if(['ERO','Promotor'].includes(first.userType)){
+   const leader=accounts.find(account=>account.username?.toLowerCase()===first.storeLeader&&account.userType==='Store Leader'&&account.accountStatus==='approved');
+   if(!leader||leader.lob?.toLowerCase()!==first.lob.toLowerCase()||leader.tsh?.toLowerCase()!==first.tsh.toLowerCase()||leader.storeCode?.toUpperCase()!==first.storeCode)throw new Error(`Store Leader ${first.storeLeader} tidak cocok dengan toko, TSH, dan LOB akun ${username}.`);
   }
-  const codes=parsed.filter(item=>item.code).map(item=>item.code),staffNiks=parsed.filter(item=>item.staffNik).map(item=>item.staffNik);
-  if(new Set(codes).size!==codes.length||codes.some(code=>staff.some(person=>person.code===code))||new Set(staffNiks).size!==staffNiks.length||staffNiks.some(nik=>staff.some(person=>person.nik===nik)))throw new Error('Ada kode internal atau NIK karyawan duplikat/sudah terdaftar.');
-  pendingAccountImport=parsed;$('saveAccountImport').disabled=false;status.textContent=`Template valid: ${grouped.size} akun dan ${codes.length} karyawan siap dibuat.`;
+  }
+  pendingAccountImport=parsed;$('saveAccountImport').disabled=false;status.textContent=`Template valid: ${grouped.size} akun siap dibuat.`;
  }catch(err){pendingAccountImport=[];$('saveAccountImport').disabled=true;status.textContent='Import gagal: '+err.message}
 };
 $('saveAccountImport').onclick=()=>{

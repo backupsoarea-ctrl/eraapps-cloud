@@ -88,6 +88,7 @@
     accountStatus: profile.account_status || 'approved', accountStatusReason: profile.account_status_reason || '',
     nik: profile.nik || '', organization: profile.organization || '', lob: profile.lob, tsh: profile.tsh,
     storeCode: profile.store_code, storeName: profile.store_name, store: profile.store_name,
+    storeLeaderId: profile.store_leader_id || '',
     staffCodes: codes, code: codes[0] || '', activeCode: codes[0] || '', mustChangePassword: profile.must_change_password,
   });
   const settingsForSave = source => {
@@ -121,6 +122,7 @@
     accounts = profiles
       .filter(item => item.role === 'user' && (profile.role === 'admin' || item.id !== profile.id))
       .map(item => userAccountFrom(item, accessRows.filter(access => access.user_id === item.id).map(access => access.staff_code)));
+    updateStoreLeaderOptions();
     const ownCodes = accessRows.filter(access => access.user_id === profile.id).map(access => access.staff_code);
     currentUser.account = userAccountFrom(profile, ownCodes);
     if (!monitoringProfile && profile.role !== 'admin') accounts = [];
@@ -277,25 +279,39 @@
     }
     if (reload) await loadCloudData();
   };
-  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '', fullName = '', nik = '', email = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization, fullName, nik, email });
+  const accountPayload = (username, password, storeName, lob, tsh, storeCode, employees, userType = 'ERO', organization = '', fullName = '', nik = '', email = '', storeLeaderId = '') => ({ username, password, storeName, lob, tsh, storeCode, employees, userType, organization, fullName, nik, email, storeLeaderId });
+  const updateStoreLeaderOptions = () => {
+    document.querySelectorAll('.staff-account-form').forEach(form => {
+      const value = name => String(form.elements.namedItem(name)?.value || '').trim();
+      const select = form.elements.namedItem('storeLeaderId');
+      if (!select) return;
+      const selected = select.value;
+      const leaders = accounts.filter(account => account.userType === 'Store Leader'
+        && account.accountStatus === 'approved'
+        && account.lob?.toLowerCase() === value('lob').toLowerCase()
+        && account.tsh?.toLowerCase() === value('tsh').toLowerCase()
+        && account.storeCode?.toUpperCase() === value('storeCode').toUpperCase());
+      select.innerHTML = leaders.length
+        ? '<option value="">Pilih Store Leader</option>' + leaders.map(account => `<option value="${esc(account.id)}">${esc(account.name || account.username)} · ${esc(account.username)}</option>`).join('')
+        : '<option value="">Belum ada Store Leader aktif pada scope ini</option>';
+      if (leaders.some(account => account.id === selected)) select.value = selected;
+    });
+  };
   const updateAccountEmployeeRequirements = () => {
     const userType = $('newUserType').value;
-    const required = ['ERO', 'Promotor'].includes(userType);
     $('newOrganization').required = true;
-    $('newLob').required = ['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'].includes(userType);
-    $('newTsh').required = ['TSH', 'Store Leader', 'ERO', 'Promotor'].includes(userType);
-    $('newStoreCode').required = ['Store Leader', 'ERO', 'Promotor'].includes(userType);
-    $('newStore').required = ['Store Leader', 'ERO', 'Promotor'].includes(userType);
-    $('newStore').placeholder = required || userType === 'Store Leader' ? 'Nama toko' : 'Tidak wajib untuk role ini';
-    document.querySelectorAll('.employee-account-row').forEach(row => {
-      row.querySelector('.employee-code').required = required;
-      row.querySelector('.employee-nik').required = required;
-      row.querySelector('.employee-name').required = required;
-    });
+    $('newLob').required = true;
+    $('newTsh').required = ['TSH', 'Store Leader'].includes(userType);
+    $('newStoreCode').required = userType === 'Store Leader';
+    $('newStore').required = userType === 'Store Leader';
+    $('newStore').placeholder = userType === 'Store Leader' ? 'Nama toko' : 'Tidak wajib untuk role ini';
   };
   $('newUserType').addEventListener('change', updateAccountEmployeeRequirements);
   updateAccountEmployeeRequirements();
-  $('addAccountEmployee').addEventListener('click', updateAccountEmployeeRequirements);
+  document.querySelectorAll('.staff-account-form').forEach(form => {
+    ['lob', 'tsh', 'storeCode'].forEach(name => form.elements.namedItem(name).addEventListener('input', updateStoreLeaderOptions));
+  });
+  updateStoreLeaderOptions();
   const stopEvent = event => { event.preventDefault(); event.stopImmediatePropagation(); };
   const enterCloudApp = (role, account = null) => {
     const profile = currentUser.profile;
@@ -476,13 +492,9 @@
     const status = $('accountFormStatus');
     status.textContent = '';
     status.className = 'mini';
-    const employees = [...document.querySelectorAll('.employee-account-row')]
-      .map(row => ({ code: row.querySelector('.employee-code').value.trim().toUpperCase(), nik: row.querySelector('.employee-nik').value.trim(), name: row.querySelector('.employee-name').value.trim() }))
-      .filter(person => person.code || person.nik || person.name);
     const userType = $('newUserType').value;
-    const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
-    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || (needsEmployeeCodes && !employees.length)) {
-      status.textContent = 'Periksa username (3-40 karakter), password (minimal 6 karakter), dan karyawan untuk role ERO/Promotor.';
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6) {
+      status.textContent = 'Periksa username (3-40 karakter) dan password (minimal 6 karakter).';
       status.className = 'login-error';
       return;
     }
@@ -491,27 +503,56 @@
       status.className = 'login-error';
       return;
     }
-    if (needsEmployeeCodes && employees.some(person => !/^\d{16}$/.test(person.nik))) {
-      status.textContent = 'Setiap karyawan ERO/Promotor wajib memiliki NIK 16 digit.';
-      status.className = 'login-error';
-      return;
-    }
-    if (new Set(employees.map(person => person.code)).size !== employees.length
-      || new Set(employees.map(person => person.nik).filter(Boolean)).size !== employees.filter(person => person.nik).length
-      || employees.some(person => staff.some(existing => existing.code === person.code || (person.nik && existing.nik === person.nik)))) {
-      status.textContent = 'Kode internal dan NIK karyawan harus unik dan belum digunakan.';
-      status.className = 'login-error';
-      return;
-    }
     try {
-      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), employees, userType, $('newOrganization').value.trim(), $('newFullName').value.trim(), $('newNik').value.trim(), $('newEmail').value.trim().toLowerCase()), $('accountForm').querySelector('button[type="submit"]'));
+      await saveAccount(accountPayload(username, password, $('newStore').value.trim(), $('newLob').value.trim(), $('newTsh').value.trim(), $('newStoreCode').value.trim().toUpperCase(), [], userType, $('newOrganization').value.trim(), $('newFullName').value.trim(), $('newNik').value.trim(), $('newEmail').value.trim().toLowerCase()), $('accountForm').querySelector('button[type="submit"]'));
       status.textContent = 'Akun aktif berhasil dibuat. Password awal wajib diganti saat login pertama.';
       status.className = 'login-success';
       event.target.reset();
       updateAccountEmployeeRequirements();
-      $('newEmployeeRows').innerHTML = '<div class="staffrow employee-account-row"><input class="employee-code" required placeholder="Kode internal, mis. EA006"><input class="employee-nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required placeholder="NIK karyawan"><input class="employee-name" required placeholder="Nama karyawan"><span></span></div>';
     } catch (error) { status.textContent = error.message || 'Akun gagal dibuat.'; status.className = 'login-error'; showError(error); }
   }, true);
+  document.querySelectorAll('.staff-account-form').forEach(form => form.addEventListener('submit', async event => {
+    stopEvent(event);
+    const value = name => String(form.elements.namedItem(name)?.value || '').trim();
+    const username = value('username').toLowerCase(), password = value('password');
+    const nik = value('nik'), fullName = value('fullName'), email = value('email').toLowerCase();
+    const lob = value('lob'), tsh = value('tsh'), storeCode = value('storeCode').toUpperCase();
+    const storeName = value('storeName'), organization = value('organization') || lob;
+    const storeLeaderId = value('storeLeaderId'), storeLeader = accounts.find(account => account.id === storeLeaderId);
+    const status = form.querySelector('[role="status"]');
+    status.textContent = '';
+    status.className = 'mini';
+    if (!/^[a-z0-9._-]{3,40}$/.test(username) || password.length < 6 || !/^\d{16}$/.test(nik)) {
+      status.textContent = 'Username harus 3-40 karakter, password minimal 6 karakter, dan NIK harus 16 digit.';
+      status.className = 'login-error';
+      return;
+    }
+    if (accounts.some(account => account.username?.toLowerCase() === username || account.nik === nik)) {
+      status.textContent = 'Username atau NIK sudah terdaftar.';
+      status.className = 'login-error';
+      return;
+    }
+    if (!storeLeader || storeLeader.userType !== 'Store Leader') {
+      status.textContent = 'Pilih Store Leader aktif yang sesuai dengan LOB, TSH, dan toko.';
+      status.className = 'login-error';
+      return;
+    }
+    const button = form.querySelector('button[type="submit"]');
+    try {
+      await saveAccount(accountPayload(
+        username, password, storeName, lob, tsh, storeCode, [], form.dataset.userType,
+        organization, fullName, nik, email, storeLeader.id,
+      ), button);
+      status.textContent = 'Akun berhasil dibuat. NIK dan nama yang sama otomatis ditautkan sebagai staf; password awal wajib diganti saat login pertama.';
+      status.className = 'login-success';
+      form.reset();
+      updateStoreLeaderOptions();
+    } catch (error) {
+      status.textContent = error.message || 'Akun gagal dibuat.';
+      status.className = 'login-error';
+      showError(error);
+    }
+  }, true));
   document.getElementById('roleInfoForm').addEventListener('submit', async event => {
     stopEvent(event);
     const profile = currentUser?.profile;
@@ -560,8 +601,9 @@
     try {
       for (const [username, employees] of grouped) {
         const first = employees[0];
-        const staffRows = employees.filter(item => item.code).map(item => ({ code: item.code, nik: item.staffNik, name: item.name }));
-        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, staffRows, first.userType, first.organization, first.fullName, first.nik, first.email));
+        const storeLeader = accounts.find(account => account.username?.toLowerCase() === first.storeLeader && account.userType === 'Store Leader');
+        if (['ERO', 'Promotor'].includes(first.userType) && !storeLeader) throw new Error(`Store Leader ${first.storeLeader} tidak ditemukan.`);
+        await callFunction('admin-create-user', accountPayload(username, first.password, first.storeName, first.lob, first.tsh, first.storeCode, [], first.userType, first.organization, first.fullName, first.nik, first.email, storeLeader?.id || ''));
         pendingAccountImport = pendingAccountImport.filter(item => item.username !== username);
         imported++;
       }

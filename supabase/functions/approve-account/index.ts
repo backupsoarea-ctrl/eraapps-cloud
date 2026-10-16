@@ -41,7 +41,7 @@ Deno.serve(async (request) => {
 
     const { data: target, error: targetError } = await admin
       .from('profiles')
-      .select('id,role,account_status,user_type,lob,tsh,store_code')
+      .select('id,role,account_status,user_type,lob,tsh,store_code,store_leader_id')
       .eq('id', targetId)
       .single();
     if (targetError) throw targetError;
@@ -58,6 +58,7 @@ Deno.serve(async (request) => {
         && sameScope(actor.tsh, target.tsh);
     } else if (!authorized && ['ERO', 'Promotor'].includes(target.user_type)) {
       authorized = actor.user_type === 'Store Leader'
+        && (!target.store_leader_id || actor.id === target.store_leader_id)
         && sameScope(actor.lob, target.lob)
         && sameScope(actor.tsh, target.tsh)
         && actor.store_code.trim() !== ''
