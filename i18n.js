@@ -41,6 +41,7 @@
     'Dashboard': ['Dashboard', '仪表盘', 'لوحة التحكم', 'Bảng điều khiển'],
     'Data Karyawan (maksimal 30)': ['Employee Data (max 30)', '员工数据（最多30）', 'بيانات الموظفين (بحد أقصى 30)', 'Dữ liệu nhân viên (tối đa 30)'],
     'Daftarkan ERO': ['Register ERO', '登记 ERO', 'تسجيل ERO', 'Đăng ký ERO'],
+    'Pendaftaran ERO/Promotor': ['ERO/Promotor Registration', 'ERO/Promotor 注册', 'تسجيل ERO/Promotor', 'Đăng ký ERO/Promotor'],
     'Daftarkan Promotor': ['Register Promotor', '登记 Promotor', 'تسجيل Promotor', 'Đăng ký Promotor'],
     'Buat akun LOB, TSH, atau Store Leader': ['Create a LOB, TSH, or Store Leader account', '创建 LOB、TSH 或 Store Leader 账号', 'إنشاء حساب LOB أو TSH أو Store Leader', 'Tạo tài khoản LOB, TSH hoặc Store Leader'],
     'Buat Akun ERO': ['Create ERO Account', '创建 ERO 账号', 'إنشاء حساب ERO', 'Tạo tài khoản ERO'],

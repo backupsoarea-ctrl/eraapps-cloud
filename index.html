@@ -264,6 +264,7 @@ td small{color:var(--muted)}
 <main class="wrap" id="mainApp"><div id="userNav" class="actions user-nav" hidden><button type="button" id="userDashboardButton" class="secondary active">Dashboard</button><button type="button" id="userApprovalButton" class="secondary" hidden>Approval akun <span id="approvalCount" class="approval-count">0</span></button><button type="button" id="userAttendanceButton" class="secondary">Absensi</button><button type="button" id="userPromoButton" class="secondary">Promo / Informasi</button><button type="button" id="userContentButton" class="secondary">Menu tambahan</button></div>
 <section id="roleDashboardPanel" class="panel section" hidden><h2 id="roleDashboardTitle">Dashboard</h2><div class="pad"><section id="highlightSlideshow" class="highlight-slideshow" hidden><img id="highlightImage" alt="Promo highlight"><div class="highlight-copy"><div class="mini"><span id="highlightCounter"></span> · Highlight</div><h3 id="highlightTitle"></h3><p id="highlightText"></p><div class="actions"><button type="button" class="secondary" id="highlightPrevious">Sebelumnya</button><button type="button" class="secondary" id="highlightNext">Berikutnya</button><button type="button" id="highlightDownload">Download JPEG</button></div></div></section><p id="roleDashboardScope" class="mini"></p><h3>Anggota dalam lingkup Anda</h3><div id="roleMemberList"></div><h3 id="pendingAccountsTitle" hidden>Persetujuan Akun</h3><div id="pendingAccountsList"></div></div></section>
 <section id="userContentPanel" class="panel section" hidden><h2>Menu tambahan</h2><div class="pad" id="userContentList"></div></section>
+<section id="storeRegistrationPanel" class="panel section" hidden><h2>Pendaftaran ERO dan Promotor</h2><div class="pad" id="storeRegistrationHost"></div></section>
 <section id="roleInfoPanel" class="panel section" hidden><h2>Terbitkan Informasi untuk Lingkup Anda</h2><div class="pad"><form id="roleInfoForm"><label>Judul<input id="roleInfoTitle" maxlength="160" required></label><label>Informasi</label><div class="actions rich-toolbar"><button type="button" data-editor-command="bold" aria-label="Bold"><b>B</b></button><button type="button" data-editor-command="italic" aria-label="Italic"><i>I</i></button><button type="button" data-editor-command="underline" aria-label="Underline"><u>U</u></button><button type="button" data-editor-command="justifyLeft" aria-label="Rata kiri">Rata kiri</button><button type="button" data-editor-command="justifyCenter" aria-label="Rata tengah">Rata tengah</button><button type="button" data-editor-command="justifyRight" aria-label="Rata kanan">Rata kanan</button><label>Warna <input id="roleInfoColor" type="color" value="#222222"></label><label>Ukuran <select id="roleInfoFontSize"><option value="14">14</option><option value="16" selected>16</option><option value="18">18</option><option value="24">24</option><option value="32">32</option></select></label></div><div id="roleInfoBody" class="rich-editor" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Informasi" data-placeholder="Tulis informasi untuk area Anda"></div><button type="submit">Terbitkan</button><div id="roleInfoStatus" class="mini" role="status"></div></form></div></section>
 <div class="stats admin-only"><div class="stat"><small>Scan hari ini</small><b id="statScans">0</b></div><div class="stat"><small>Karyawan terdaftar</small><b id="statStaff">5</b></div><div class="stat"><small>Sudah masuk</small><b id="statPresent">0</b></div><div class="stat"><small>Belum pulang</small><b id="statOpen">0</b></div></div>
 <div id="dashboardFilters" class="dashboard-filters admin-only"><label>LOB<select id="dashboardFilterLob"><option value="">Semua LOB</option></select></label><label>TSH<select id="dashboardFilterTsh"><option value="">Semua TSH</option></select></label><label>CODE<select id="dashboardFilterCode"><option value="">Semua CODE</option></select></label><label>STORE NAME<select id="dashboardFilterStore"><option value="">Semua STORE NAME</option></select></label><button type="button" class="secondary" id="resetDashboardFilters">Reset Filter</button></div>
@@ -304,7 +305,7 @@ td small{color:var(--muted)}
   <label>Kode Toko<input id="newStoreCode" placeholder="contoh: TSH001"></label>
   <label>Nama toko<input id="newStore" placeholder="Nama toko"></label>
  </div><div class="actions"><button type="submit">Buat Akun</button></div><div id="accountFormStatus" class="mini" role="status"></div></form>
- <hr><h3>Daftarkan ERO</h3>
+ <div id="staffAccountRegistrationForms"><div class="actions"><button type="button" class="secondary" id="downloadStoreAccountTemplate">Download template Excel (.xlsx)</button></div><p class="mini">Contoh baris memakai username CONTOH_JANGAN_UPLOAD dan otomatis dilewati saat impor.</p><h3>Daftarkan ERO</h3>
  <form id="eroAccountForm" class="staff-account-form" data-user-type="ERO"><div class="settings-grid">
   <label>NIK karyawan<input name="nik" required autocomplete="off"></label>
   <label>Nama lengkap<input name="fullName" required autocomplete="name"></label>
@@ -331,9 +332,9 @@ td small{color:var(--muted)}
   <label>BU<input name="organization" required></label>
   <label>Username<input name="username" required autocomplete="username"></label>
   <label>Password awal<input name="password" type="password" minlength="6" required autocomplete="new-password"></label>
- </div><div class="actions"><button type="submit">Buat Akun Promotor</button></div><div class="mini" role="status"></div></form>
+ </div><div class="actions"><button type="submit">Buat Akun Promotor</button></div><div class="mini" role="status"></div></form></div>
  <hr><h3>Impor massal dari template Excel</h3>
- <p class="mini">Unduh template .xlsx, isi satu baris per akun. Untuk ERO/Promotor, NIK dan nama akun otomatis menjadi data staf sehingga tidak perlu kolom NIK/nama staf terpisah. Akun menerima password awal yang wajib diganti saat login pertama.</p>
+ <p class="mini">Template berisi dua sheet yang dipasangkan melalui username: Akun Login dan Pendaftaran Karyawan. Baris contoh CONTOH_JANGAN_UPLOAD otomatis dilewati saat impor. Untuk ERO/Promotor, NIK dan nama akun otomatis menjadi data staf; email hanya diperiksa formatnya.</p>
  <div class="actions"><button type="button" class="secondary" id="downloadAccountTemplate">Download template Excel (.xlsx)</button><label class="secondary" style="padding:10px 12px;border-radius:9px;cursor:pointer">Upload template <input id="accountExcelFile" type="file" accept=".xlsx,.xls,.csv" style="display:none"></label><button type="button" id="saveAccountImport" disabled>Buat semua akun</button></div><div id="importAccountStatus" class="mini" role="status"></div>
  <div id="accountList" class="stafflist"></div>
 </div></div>
@@ -561,26 +562,31 @@ function applyAppearance(){
 function showUserPage(page){
  if(currentUser?.role!=='user')return;
  const userType=currentUser.profile?.user_type||currentUser.account?.userType||'ERO';
+ if(page==='registration'&&userType!=='Store Leader')page='dashboard';
  if(page==='attendance'&&userType==='LOB')page='dashboard';
  const promoVisible=page==='promo';
  const contentVisible=page==='content';
  const dashboardVisible=page==='dashboard';
+ const registrationVisible=page==='registration';
  const lobMonitoring=userType==='LOB';
  document.body.classList.toggle('user-promo-view',promoVisible);
- $('attendancePanel').hidden=promoVisible||contentVisible||dashboardVisible||lobMonitoring;
- $('activityPanel').hidden=promoVisible||contentVisible||dashboardVisible||lobMonitoring;
- $('userResultPanel').hidden=promoVisible||contentVisible||dashboardVisible||lobMonitoring;
+ $('attendancePanel').hidden=promoVisible||contentVisible||dashboardVisible||registrationVisible||lobMonitoring;
+ $('activityPanel').hidden=promoVisible||contentVisible||dashboardVisible||registrationVisible||lobMonitoring;
+ $('userResultPanel').hidden=promoVisible||contentVisible||dashboardVisible||registrationVisible||lobMonitoring;
  $('promoPanel').hidden=!promoVisible;
  $('userContentPanel').hidden=!contentVisible;
  $('roleDashboardPanel').hidden=!dashboardVisible;
+ $('storeRegistrationPanel').hidden=!registrationVisible;
  $('roleInfoPanel').hidden=!dashboardVisible||userType!=='LOB';
  $('userAttendanceButton').hidden=lobMonitoring;
+ $('userRegistrationButton').hidden=userType!=='Store Leader';
  $('userApprovalButton').hidden=!['LOB','TSH','Store Leader'].includes(userType);
  $('userDashboardButton').classList.toggle('active',dashboardVisible);
  $('userApprovalButton').classList.toggle('active',false);
  $('userAttendanceButton').classList.toggle('active',!promoVisible&&!contentVisible&&!dashboardVisible);
  $('userPromoButton').classList.toggle('active',promoVisible);
  $('userContentButton').classList.toggle('active',contentVisible);
+ $('userRegistrationButton').classList.toggle('active',registrationVisible);
  if(dashboardVisible){renderRoleDashboard();showHighlightSlide(highlightIndex)}
  if(page==='approval'){showUserPage('dashboard');$('userApprovalButton').classList.add('active');$('pendingAccountsTitle').scrollIntoView({behavior:'smooth',block:'start'})}
  if(promoVisible)renderPromos();
@@ -590,6 +596,9 @@ $('userApprovalButton').onclick=()=>showUserPage('approval');
 $('userAttendanceButton').onclick=()=>showUserPage('attendance');
 $('userPromoButton').onclick=()=>showUserPage('promo');
 $('userContentButton').onclick=()=>showUserPage('content');
+const userRegistrationButton=document.createElement('button');userRegistrationButton.type='button';userRegistrationButton.id='userRegistrationButton';userRegistrationButton.className='secondary';userRegistrationButton.textContent='Pendaftaran ERO/Promotor';userRegistrationButton.hidden=true;
+$('userNav').appendChild(userRegistrationButton);
+userRegistrationButton.onclick=()=>showUserPage('registration');
 function renderCustomContent(items=[],admin=false){
  const parent=$('contentParent'),adminList=$('adminContentList'),userList=$('userContentList');
  if(!parent||!adminList||!userList)return;
@@ -722,15 +731,20 @@ $('downloadAccountTemplate').onclick=()=>{
  if(!window.XLSX){$('importAccountStatus').textContent='Template Excel belum dapat dibuat karena library Excel tidak tersedia.';return}
  const loginHeaders=['username','email','password','user_type','full_name','NIK karyawan','BU'];
  const staffHeaders=['username','email','password','user_type','NIK karyawan','Name full','store_code','store_name','store_leader','TSH','LOB','BU'];
- const loginSheet=XLSX.utils.aoa_to_sheet([loginHeaders]);
+ const sampleUsername='CONTOH_JANGAN_UPLOAD';
+ const sampleEmail='contoh@example.invalid';
+ const samplePassword='PasswordContoh123';
+ const sampleNik='NIK-EMP-001';
+ const loginSheet=XLSX.utils.aoa_to_sheet([loginHeaders,[sampleUsername,sampleEmail,samplePassword,'ERO','Nama Contoh',sampleNik,'BU Contoh']]);
  loginSheet['!cols']=loginHeaders.map(header=>({wch:Math.max(16,header.length+3)}));
- const staffSheet=XLSX.utils.aoa_to_sheet([staffHeaders]);
+ const staffSheet=XLSX.utils.aoa_to_sheet([staffHeaders,[sampleUsername,sampleEmail,samplePassword,'ERO',sampleNik,'Nama Contoh','TOKO-001','Toko Contoh','username_store_leader','TSH Contoh','LOB Contoh','BU Contoh']]);
  staffSheet['!cols']=staffHeaders.map(header=>({wch:Math.max(16,header.length+3)}));
  const workbook=XLSX.utils.book_new();
  XLSX.utils.book_append_sheet(workbook,loginSheet,'Akun Login');
  XLSX.utils.book_append_sheet(workbook,staffSheet,'Pendaftaran Karyawan');
  XLSX.writeFile(workbook,'Template_Akun_EraApps.xlsx');
 };
+$('downloadStoreAccountTemplate').onclick=$('downloadAccountTemplate').onclick;
 $('accountExcelFile').onchange=async e=>{
  const file=e.target.files[0];if(!file)return;const status=$('importAccountStatus');pendingAccountImport=[];$('saveAccountImport').disabled=true;status.textContent='Memproses file...';
  try{
@@ -739,7 +753,7 @@ $('accountExcelFile').onchange=async e=>{
   const norm=value=>String(value??'').trim().toLowerCase().replace(/[_-]+/g,' ').replace(/\s+/g,' ');
   const readSheet=(name)=>{
    const sheet=workbook.Sheets[name];if(!sheet)throw new Error(`Sheet ${name} tidak ditemukan.`);
-   const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''}).filter(row=>row.some(value=>String(value??'').trim()));
+  const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:''}).filter(row=>row.some(value=>String(value??'').trim())&&String(row[0]??'').trim().toUpperCase()!=='CONTOH_JANGAN_UPLOAD');
    const headers=(rows.shift()||[]).map(norm),column=(...names)=>headers.findIndex(header=>names.map(norm).includes(header));
    return{rows,column};
   };

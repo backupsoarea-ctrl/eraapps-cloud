@@ -122,9 +122,9 @@
     accounts = profiles
       .filter(item => item.role === 'user' && (profile.role === 'admin' || item.id !== profile.id))
       .map(item => userAccountFrom(item, accessRows.filter(access => access.user_id === item.id).map(access => access.staff_code)));
-    updateStoreLeaderOptions();
     const ownCodes = accessRows.filter(access => access.user_id === profile.id).map(access => access.staff_code);
     currentUser.account = userAccountFrom(profile, ownCodes);
+    updateStoreLeaderOptions();
     if (!monitoringProfile && profile.role !== 'admin') accounts = [];
     const rawLogs = check(logResult);
     logs = await Promise.all(rawLogs.map(async row => {
@@ -286,7 +286,10 @@
       const select = form.elements.namedItem('storeLeaderId');
       if (!select) return;
       const selected = select.value;
-      const leaders = accounts.filter(account => account.userType === 'Store Leader'
+      const availableAccounts = currentUser?.profile?.user_type === 'Store Leader'
+        ? [...accounts, userAccountFrom(currentUser.profile, currentUser.account?.staffCodes || [])]
+        : accounts;
+      const leaders = availableAccounts.filter(account => account.userType === 'Store Leader'
         && account.accountStatus === 'approved'
         && account.lob?.toLowerCase() === value('lob').toLowerCase()
         && account.tsh?.toLowerCase() === value('tsh').toLowerCase()
@@ -295,6 +298,25 @@
         ? '<option value="">Pilih Store Leader</option>' + leaders.map(account => `<option value="${esc(account.id)}">${esc(account.name || account.username)} · ${esc(account.username)}</option>`).join('')
         : '<option value="">Belum ada Store Leader aktif pada scope ini</option>';
       if (leaders.some(account => account.id === selected)) select.value = selected;
+    });
+  };
+  const applyStoreLeaderRegistrationScope = profile => {
+    const forms = $('staffAccountRegistrationForms');
+    if (!forms || profile?.user_type !== 'Store Leader') return;
+    forms.querySelectorAll('.staff-account-form').forEach(form => {
+      for (const [field, value] of Object.entries({
+        lob: profile.lob, tsh: profile.tsh, storeCode: profile.store_code,
+        storeName: profile.store_name, organization: profile.organization,
+      })) {
+        const input = form.elements.namedItem(field);
+        input.value = value || '';
+        input.readOnly = true;
+      }
+    });
+    updateStoreLeaderOptions();
+    forms.querySelectorAll('[name="storeLeaderId"]').forEach(select => {
+      select.value = profile.id;
+      select.disabled = true;
     });
   };
   const updateAccountEmployeeRequirements = () => {
@@ -332,6 +354,10 @@
       accountInfo.hidden = false;
     }
     if (role === 'user') {
+      if (type === 'Store Leader') {
+        $('storeRegistrationHost').appendChild($('staffAccountRegistrationForms'));
+        applyStoreLeaderRegistrationScope(profile);
+      }
       $('attendancePanel').querySelector('h2').textContent = `${type} · Absensi Saya`;
       showUserPage('dashboard');
     }
@@ -548,6 +574,7 @@
       status.className = 'login-success';
       form.reset();
       updateStoreLeaderOptions();
+      applyStoreLeaderRegistrationScope(currentUser?.profile);
     } catch (error) {
       status.textContent = error.message || 'Akun gagal dibuat.';
       status.className = 'login-error';

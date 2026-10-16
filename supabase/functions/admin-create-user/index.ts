@@ -16,13 +16,33 @@ Deno.serve(async (request) => {
   if (!authData.user) return jsonResponse({ error: 'Sesi tidak valid.' }, 401);
 
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-  const { data: profile } = await admin.from('profiles').select('role').eq('id', authData.user.id).maybeSingle();
-  if (profile?.role !== 'admin') return jsonResponse({ error: 'Hanya admin yang dapat membuat akun.' }, 403);
+  const { data: profile } = await admin.from('profiles')
+    .select('id,role,account_status,user_type,organization,lob,tsh,store_code,store_name')
+    .eq('id', authData.user.id).maybeSingle();
+  const isAdmin = profile?.role === 'admin';
+  const isStoreLeader = profile?.role === 'user' && profile.user_type === 'Store Leader' && profile.account_status === 'approved';
+  if (!isAdmin && !isStoreLeader) return jsonResponse({ error: 'Hanya Admin atau Store Leader aktif yang dapat membuat akun ERO/Promotor.' }, 403);
 
   let createdUserId: string | undefined;
   let insertedStaffCodes: string[] = [];
   try {
-    const body = await request.json();
+    const submittedBody = await request.json();
+    if (isStoreLeader && (
+      (submittedBody.lob && String(submittedBody.lob).trim().toLowerCase() !== String(profile.lob || '').trim().toLowerCase())
+      || (submittedBody.tsh && String(submittedBody.tsh).trim().toLowerCase() !== String(profile.tsh || '').trim().toLowerCase())
+      || (submittedBody.storeCode && String(submittedBody.storeCode).trim().toUpperCase() !== String(profile.store_code || '').trim().toUpperCase())
+      || (submittedBody.storeName && String(submittedBody.storeName).trim().toLowerCase() !== String(profile.store_name || '').trim().toLowerCase())
+      || (submittedBody.organization && String(submittedBody.organization).trim().toLowerCase() !== String(profile.organization || '').trim().toLowerCase())
+    )) return jsonResponse({ error: 'Store Leader hanya dapat mendaftarkan akun dalam scope tokonya sendiri.' }, 403);
+    const body = isStoreLeader ? {
+      ...submittedBody,
+      organization: profile.organization,
+      lob: profile.lob,
+      tsh: profile.tsh,
+      storeCode: profile.store_code,
+      storeName: profile.store_name,
+      storeLeaderId: profile.id,
+    } : submittedBody;
     const username = String(body.username || '').trim().toLowerCase();
     const email = String(body.email || '').trim().toLowerCase();
     const password = String(body.password || '');
@@ -33,6 +53,9 @@ Deno.serve(async (request) => {
     const employees = Array.isArray(body.employees) ? body.employees : [];
     const allowedUserTypes = ['LOB', 'TSH', 'Store Leader', 'ERO', 'Promotor'];
     const needsEmployeeCodes = ['ERO', 'Promotor'].includes(userType);
+    if (isStoreLeader && (!needsEmployeeCodes || employees.length > 0)) {
+      return jsonResponse({ error: 'Store Leader hanya dapat mendaftarkan satu akun ERO atau Promotor per pengiriman.' }, 403);
+    }
     if (!username || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 6 || !nik || !fullName.trim() || (!needsEmployeeCodes && employees.length > 0) || !allowedUserTypes.includes(userType)) {
       return jsonResponse({ error: 'Username, format email, nama, NIK karyawan, password, atau role pengguna tidak valid.' }, 400);
     }
@@ -135,7 +158,9 @@ Deno.serve(async (request) => {
       tsh: profileMetadata.tsh, store_code: profileMetadata.store_code, store_name: profileMetadata.store_name,
       store_leader_id: profileMetadata.store_leader_id,
       must_change_password: true, password_changed_at: new Date().toISOString(),
-      account_status: 'approved', approved_by: authData.user.id, approved_at: new Date().toISOString(),
+      account_status: isAdmin ? 'approved' : 'pending',
+      approved_by: isAdmin ? authData.user.id : null,
+      approved_at: isAdmin ? new Date().toISOString() : null,
     };
     const { error: profileError } = await admin.from('profiles').upsert(profileRow, { onConflict: 'id' });
     if (profileError) throw profileError;
